@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# build files
+dist/
+
+# environment files
+.env
+.env.*
+
+# Cloudflare
+.wrangler/
+
+# logs
+npm-debug.log*
