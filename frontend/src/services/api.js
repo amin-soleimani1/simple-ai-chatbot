@@ -1,7 +1,13 @@
 const WORKER_URL = "https://worker.mohammad-vr200.workers.dev";
 
-export async function sendMessage() {
-  const response = await fetch(WORKER_URL);
+export async function sendMessage(message, history) {
+  const response = await fetch(`${WORKER_URL}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message, history }),
+  });
 
   if (!response.ok) {
     throw new Error("Worker request failed");

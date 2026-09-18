@@ -16,12 +16,17 @@ function App() {
 
     if (!text || isSendingRef.current) return;
 
+    const history = messages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-6)
+      .map(({ role, content: previousContent }) => ({ role, content: previousContent }));
+
     isSendingRef.current = true;
     setIsSending(true);
     setMessages((items) => [...items, { id: crypto.randomUUID(), role: "user", content: text }]);
 
     try {
-      const message = await sendMessage();
+      const message = await sendMessage(text, history);
       setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: message }]);
     } catch {
       setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: "خطایی در ارتباط با سرور رخ داد." }]);
