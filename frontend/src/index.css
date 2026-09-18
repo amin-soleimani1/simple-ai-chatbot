@@ -1,1 +1,6 @@
 @import "tailwindcss";
+
+:root { font-family: Tahoma, Arial, sans-serif; color: #f4f4f5; background: #171216; }
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100dvh; margin: 0; }
+button, textarea { font: inherit; }
