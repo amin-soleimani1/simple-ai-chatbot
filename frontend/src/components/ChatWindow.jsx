@@ -1,9 +1,19 @@
+import { useEffect, useRef } from "react";
 import BrandBanner from "./BrandBanner";
 import MessageBubble from "./MessageBubble";
 import SuggestionButtons from "./SuggestionButtons";
+import StoreInfo from "./StoreInfo";
 import WelcomeMessage from "./WelcomeMessage";
 
 export default function ChatWindow({ messages, onSuggestionClick }) {
+  const conversationRef = useRef(null);
   const hasUserMessage = messages.some((message) => message.role === "user");
-  return <section className="flex-1 overflow-y-auto"><div className={`mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8 ${hasUserMessage ? "py-7 sm:py-8 lg:py-10" : "flex min-h-full flex-col justify-end pb-3 pt-8 sm:pb-5 sm:pt-10 lg:pb-6 lg:pt-8"}`}><div className={hasUserMessage ? "-mb-[6px]" : ""}><BrandBanner /></div>{hasUserMessage ? <><div className="space-y-6">{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div><SuggestionButtons onSelect={onSuggestionClick} limit={3} /></> : <><WelcomeMessage /><SuggestionButtons onSelect={onSuggestionClick} /></>}</div></section>;
+
+  useEffect(() => {
+    if (conversationRef.current) {
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  return <section className="flex min-h-0 flex-1 flex-col"><div className="mx-auto w-full max-w-4xl shrink-0 px-2 pt-0.5 sm:px-6 sm:pt-1 lg:px-8"><BrandBanner /><StoreInfo /></div><div ref={conversationRef} className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8"><div className={`mx-auto w-full max-w-4xl ${hasUserMessage ? "py-3 sm:py-5 lg:py-6" : "flex min-h-full flex-col justify-center py-3 sm:py-5"}`}>{hasUserMessage ? <div className="space-y-4 sm:space-y-5">{messages.map((message) => <MessageBubble key={message.id} message={message} />)}</div> : <WelcomeMessage />}</div></div><div className="shrink-0 px-3 pb-1 pt-1 sm:px-6 sm:pb-2 lg:px-8"><SuggestionButtons onSelect={onSuggestionClick} inConversation={hasUserMessage} /></div></section>;
 }

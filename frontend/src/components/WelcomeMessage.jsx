@@ -1,5 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 
 export default function WelcomeMessage() {
-  return <section className="text-center"><div className="mb-4 inline-flex rounded-xl bg-emerald-400/10 p-3 text-emerald-300 sm:mb-5 lg:p-4"><Sparkles size={26} className="lg:size-7" /></div><h1 className="text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl lg:text-[34px] lg:leading-tight">سلام، چطور می‌تونم کمک کنم؟</h1><p className="mt-3 text-sm leading-7 text-zinc-400 sm:text-base lg:mt-4 lg:leading-8">سؤالت را بنویس یا یکی از پیشنهادها را انتخاب کن.</p></section>;
+  return <section className="text-center"><div className="inline-flex p-1.5 text-[#e3bd62]"><Lightbulb size={26} className="sm:size-7" /></div><h1 className="mt-1 text-xl font-semibold leading-8 tracking-tight text-zinc-50 sm:text-2xl sm:leading-9">به چت‌بات <span className="font-bold text-[#e3bd62]">کالای روشنایی کیان</span> خوش آمدید.</h1><div className="mt-2 text-sm leading-6 text-zinc-400 sm:text-base sm:leading-7"><p>می‌تونید درباره قیمت لامپ، تعمیرات، پروژکتور، پنل سقفی و ... از من بپرسید.</p><p className="mt-0.5 text-center">یا یکی از پیشنهادها را انتخاب کنید.</p></div></section>;
 }

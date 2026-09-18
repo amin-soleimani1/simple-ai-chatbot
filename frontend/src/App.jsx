@@ -35,6 +35,6 @@ function App() {
       setIsSending(false);
     }
   }
-  return <main dir="rtl" className="flex min-h-dvh flex-col bg-[#171216] text-zinc-100"><Header /><ChatWindow messages={messages} onSuggestionClick={handleSend} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}</main>;
+  return <main dir="rtl" className="flex h-dvh min-h-dvh flex-col overflow-hidden bg-[#171216] text-zinc-100"><Header /><ChatWindow messages={messages} onSuggestionClick={handleSend} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}</main>;
 }
 export default App;
