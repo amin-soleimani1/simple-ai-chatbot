@@ -14,6 +14,8 @@ const authEnv = {
 	ADMIN_AUTH_RATE_LIMIT: { limit: vi.fn().mockResolvedValue({ success: true }) },
 };
 
+const localAuthEnv = { ...authEnv, ADMIN_COOKIE_MODE: "local" };
+
 function request(path, options = {}) {
 	return new Request(`http://example.com${path}`, options);
 }
@@ -100,6 +102,23 @@ describe("worker routes", () => {
 		expect(await response.json()).toEqual({ success: true });
 		expect(response.headers.get("Set-Cookie")).toContain("HttpOnly");
 		expect(response.headers.get("Set-Cookie")).toContain("Max-Age=7200");
+		expect(response.headers.get("Set-Cookie")).toContain("Secure");
+		expect(response.headers.get("Set-Cookie")).toContain("SameSite=None");
+	});
+
+	it("uses a non-secure SameSite=Lax cookie for local admin login", async () => {
+		const response = await worker.fetch(request("/admin/auth", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ pin: localAuthEnv.ADMIN_PIN }),
+		}), localAuthEnv);
+		const cookie = response.headers.get("Set-Cookie");
+		expect(response.status).toBe(200);
+		expect(cookie).toContain("HttpOnly");
+		expect(cookie).toContain("SameSite=Lax");
+		expect(cookie).not.toContain("Secure");
+		expect(cookie).toContain("Path=/");
+		expect(cookie).toContain("Max-Age=7200");
 	});
 
 	it("reports no session when the cookie is absent", async () => {
@@ -120,11 +139,44 @@ describe("worker routes", () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ success: true });
 		expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0");
+		expect(response.headers.get("Set-Cookie")).toContain("Secure");
+		expect(response.headers.get("Set-Cookie")).toContain("SameSite=None");
+	});
+
+	it("expires the session cookie with the local policy", async () => {
+		const response = await worker.fetch(request("/admin/logout", { method: "POST" }), localAuthEnv);
+		const cookie = response.headers.get("Set-Cookie");
+		expect(response.status).toBe(200);
+		expect(cookie).toContain("HttpOnly");
+		expect(cookie).toContain("SameSite=Lax");
+		expect(cookie).not.toContain("Secure");
+		expect(cookie).toContain("Path=/");
+		expect(cookie).toContain("Max-Age=0");
 	});
 
 	it("keeps the existing GET /chat method guard", async () => {
 		const response = await worker.fetch(request("/chat"), authEnv);
 		expect(response.status).toBe(405);
+	});
+
+	it("allows PUT in an admin knowledge preflight from an allowed origin", async () => {
+		const response = await worker.fetch(request("/admin/knowledge/projectors", {
+			method: "OPTIONS",
+			headers: { Origin: "http://127.0.0.1:5173", "Access-Control-Request-Method": "PUT" },
+		}), authEnv);
+		expect(response.status).toBe(204);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:5173");
+		expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, OPTIONS");
+	});
+
+	it("keeps disallowed origins blocked for preflight", async () => {
+		const response = await worker.fetch(request("/admin/knowledge/projectors", {
+			method: "OPTIONS",
+			headers: { Origin: "https://untrusted.example", "Access-Control-Request-Method": "PUT" },
+		}), authEnv);
+		expect(response.status).toBe(403);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
 	});
 
 	it("requires a session for knowledge routes", async () => {
@@ -198,6 +250,61 @@ describe("worker routes", () => {
 	it("rejects duplicate watt entries", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
 		expect(parseKnowledge(category, "9 وات 160\n9 وات 180").valid).toBe(false);
+	});
+
+	it("accepts a projector heading before four price rows", () => {
+		const category = getKnowledgeCategory("projectors");
+		const result = parseKnowledge(category, "پروژکتور\n۵۰وات ۵۰۰\n۱۰۰وات ۱تومن\n۱۵۰وات ۱۵۰۰\n۲۰۰وات ۲تومن");
+		expect(result).toEqual({
+			valid: true,
+			parsedData: { items: [
+				{ watt: 50, price: 500000 },
+				{ watt: 100, price: 1000000 },
+				{ watt: 150, price: 1500000 },
+				{ watt: 200, price: 2000000 },
+			] },
+			errors: [],
+		});
+	});
+
+	it("accepts a Persian bulb heading before price rows", () => {
+		const category = getKnowledgeCategory("iranian-bulbs-warranty");
+		const result = parseKnowledge(category, "لامپ ایرانی ضمانت یکساله\n۹وات ۱۶۰\n۱۲وات ۱۸۰");
+		expect(result).toMatchObject({ valid: true, parsedData: { items: [{ watt: 9, price: 160000 }, { watt: 12, price: 180000 }] } });
+	});
+
+	it("rejects invalid text between valid price rows", () => {
+		const category = getKnowledgeCategory("projectors");
+		const result = parseKnowledge(category, "پروژکتور\n۵۰وات ۵۰۰\nمتن نامعتبر وسط لیست\n۱۰۰وات ۱تومن");
+		expect(result.valid).toBe(false);
+		expect(result.errors).toContainEqual({ line: 3, message: "فرمت هر خط باید مانند «۹ وات ۱۶۰» باشد." });
+	});
+
+	it("does not treat an incomplete watt row as a heading", () => {
+		const category = getKnowledgeCategory("projectors");
+		const result = parseKnowledge(category, "۱۵۰وات");
+		expect(result.valid).toBe(false);
+		expect(result.errors).toContainEqual({ line: 1, message: "قیمت مشخص نشده است." });
+	});
+
+	it("rejects a heading that has no valid price row after it", () => {
+		const category = getKnowledgeCategory("projectors");
+		expect(parseKnowledge(category, "پروژکتور").valid).toBe(false);
+	});
+
+	it("permits only the first text line as a heading", () => {
+		const category = getKnowledgeCategory("projectors");
+		const result = parseKnowledge(category, "پروژکتور\nلیست قیمت امروز\n۵۰وات ۵۰۰");
+		expect(result.valid).toBe(false);
+		expect(result.errors).toContainEqual({ line: 2, message: "فرمت هر خط باید مانند «۹ وات ۱۶۰» باشد." });
+	});
+
+	it("keeps a price list without a heading valid", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "۹وات ۱۶۰\n۱۲وات ۱۸۰")).toMatchObject({
+			valid: true,
+			parsedData: { items: [{ watt: 9, price: 160000 }, { watt: 12, price: 180000 }] },
+		});
 	});
 
 	it("previews valid knowledge without writing to KV", async () => {

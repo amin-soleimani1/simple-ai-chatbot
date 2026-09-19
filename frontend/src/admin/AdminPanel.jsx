@@ -4,7 +4,9 @@ import {
   Store, X,
 } from "lucide-react";
 import { adminSections, getAdminPath, navigateTo } from "./adminRoutes";
-import { logoutAdmin } from "../services/api";
+import { getKnowledgeCategoryDetail, logoutAdmin } from "../services/api";
+import KnowledgePage from "./KnowledgePage";
+import KnowledgeCategoryDetail from "./KnowledgeCategoryDetail";
 import "./admin.css";
 
 const icons = [PanelTop, BrainCircuit, Store, Bot, Palette, Menu];
@@ -86,10 +88,21 @@ function SectionPlaceholder({ section }) {
   );
 }
 
+function getAdminHeaderTitle(path, detail) {
+  if (path.startsWith("/admin/knowledge/")) return detail.state === "ready" ? detail.category.title : "دانش پایه";
+  return adminSections.find((section) => section.path === path)?.title || "پنل مدیریت";
+}
+
 export default function AdminPanel({ onLogout }) {
   const [path, setPath] = useState(() => getAdminPath(window.location.pathname));
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const section = adminSections.find((item) => item.path === path) || adminSections[0];
+  const [knowledgeDetail, setKnowledgeDetail] = useState({ state: "idle", category: null, knowledge: null, id: null });
+  const knowledgeSection = adminSections.find((item) => item.path === "/admin/knowledge");
+  const isKnowledgeDetailPath = path.startsWith("/admin/knowledge/");
+  const categoryId = isKnowledgeDetailPath ? path.slice("/admin/knowledge/".length) : null;
+  const section = adminSections.find((item) => item.path === path) || (isKnowledgeDetailPath ? knowledgeSection : adminSections[0]);
+  const currentKnowledgeDetail = knowledgeDetail.id === categoryId ? knowledgeDetail : { state: "loading", category: null, knowledge: null, id: categoryId };
+  const headerTitle = getAdminHeaderTitle(path, currentKnowledgeDetail);
 
   useEffect(() => {
     const handlePopState = () => setPath(getAdminPath(window.location.pathname));
@@ -97,10 +110,31 @@ export default function AdminPanel({ onLogout }) {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  useEffect(() => {
+    if (!categoryId) return undefined;
+    let active = true;
+    getKnowledgeCategoryDetail(categoryId)
+      .then((data) => {
+        if (active) setKnowledgeDetail({ state: "ready", category: data.category, knowledge: data.knowledge, id: categoryId });
+      })
+      .catch((error) => {
+        if (active) setKnowledgeDetail({ state: error.status === 404 ? "not-found" : "error", category: null, knowledge: null, id: categoryId });
+      });
+    return () => { active = false; };
+  }, [categoryId]);
+
   function handleNavigate(nextPath) {
     navigateTo(nextPath);
     setPath(nextPath);
     setDrawerOpen(false);
+  }
+
+  function handleKnowledgeSaved(record) {
+    setKnowledgeDetail((current) => (
+      current.id === record.id
+        ? { ...current, category: record, knowledge: record }
+        : current
+    ));
   }
 
   async function handleLogout() {
@@ -115,11 +149,11 @@ export default function AdminPanel({ onLogout }) {
       </aside>
       <div className="admin-main">
         <AdminHeader
-          title={section.path === "/admin" ? "پنل مدیریت" : section.title}
+          title={headerTitle}
           onLogout={handleLogout}
           onMenu={() => setDrawerOpen(true)}
         />
-        <div className="admin-content">{section.path === "/admin" ? <Dashboard onNavigate={handleNavigate} /> : <SectionPlaceholder section={section} />}</div>
+        <div className="admin-content">{section.path === "/admin" ? <Dashboard onNavigate={handleNavigate} /> : path === "/admin/knowledge" ? <KnowledgePage onNavigate={handleNavigate} /> : isKnowledgeDetailPath ? <KnowledgeCategoryDetail key={categoryId} detail={currentKnowledgeDetail} onKnowledgeSaved={handleKnowledgeSaved} /> : <SectionPlaceholder section={section} />}</div>
       </div>
       {drawerOpen && <div className="admin-drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`admin-drawer ${drawerOpen ? "is-open" : ""}`} aria-hidden={!drawerOpen}>

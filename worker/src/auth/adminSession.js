@@ -72,10 +72,20 @@ export async function requireAdmin(request, env) {
 	}
 }
 
-export function sessionCookie(token) {
-	return `${SESSION_COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${SESSION_DURATION_SECONDS}`;
+function usesLocalCookiePolicy(env) {
+	return env?.ADMIN_COOKIE_MODE === "local";
 }
 
-export function expiredSessionCookie() {
-	return `${SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+function cookiePolicy(env) {
+	return usesLocalCookiePolicy(env)
+		? "HttpOnly; SameSite=Lax; Path=/"
+		: "HttpOnly; Secure; SameSite=None; Path=/";
+}
+
+export function sessionCookie(token, env) {
+	return `${SESSION_COOKIE_NAME}=${token}; ${cookiePolicy(env)}; Max-Age=${SESSION_DURATION_SECONDS}`;
+}
+
+export function expiredSessionCookie(env) {
+	return `${SESSION_COOKIE_NAME}=; ${cookiePolicy(env)}; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }

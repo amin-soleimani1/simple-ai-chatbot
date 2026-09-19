@@ -11,6 +11,9 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"vars": {
+		"ADMIN_COOKIE_MODE": "production"
+	},
 	"ai": {
 		"binding": "AI"
 	},

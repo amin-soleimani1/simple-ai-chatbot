@@ -1,4 +1,4 @@
-const WORKER_URL = "https://worker.mohammad-vr200.workers.dev";
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || "https://worker.mohammad-vr200.workers.dev";
 
 async function adminRequest(path, options = {}) {
   return fetch(`${WORKER_URL}${path}`, {
@@ -52,4 +52,74 @@ export async function getAdminSession() {
 
 export async function logoutAdmin() {
   await adminRequest("/admin/logout", { method: "POST" });
+}
+
+async function readAdminResponse(response, fallbackMessage) {
+  let data = null;
+  try { data = await response.json(); } catch { /* The UI only needs a safe generic error. */ }
+  if (!response.ok) {
+    const error = new Error(fallbackMessage);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function getKnowledgeCategories() {
+  const response = await adminRequest("/admin/knowledge");
+  const data = await readAdminResponse(response, "Unable to load knowledge categories");
+  if (!Array.isArray(data?.categories)) throw new Error("Knowledge categories response is invalid");
+  return data.categories;
+}
+
+export async function getKnowledgeCategoryDetail(categoryId) {
+  const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}`);
+  const data = await readAdminResponse(response, "Unable to load knowledge category");
+  if (!data?.category || typeof data.category.title !== "string") throw new Error("Knowledge category response is invalid");
+  return data;
+}
+
+export async function previewKnowledgeCategory(categoryId, rawText) {
+  const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rawText }),
+  });
+  let data = null;
+  try { data = await response.json(); } catch { /* A safe UI error is shown below. */ }
+  if (response.status === 400 && data?.valid === false) return data;
+  if (!response.ok) {
+    const error = new Error("Unable to preview knowledge category");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function saveKnowledgeCategory(categoryId, rawText) {
+  const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rawText }),
+  });
+  let data = null;
+  try { data = await response.json(); } catch { /* A safe UI error is shown below. */ }
+  if (response.status === 400 && data?.valid === false) return data;
+  if (!response.ok) {
+    const error = new Error("Unable to save knowledge category");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function createKnowledgeCategory({ title, type }) {
+  const response = await adminRequest("/admin/knowledge/categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, type }),
+  });
+  const data = await readAdminResponse(response, "Unable to create knowledge category");
+  if (!data?.category || typeof data.category.id !== "string") throw new Error("Knowledge category response is invalid");
+  return data.category;
 }

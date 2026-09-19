@@ -104,12 +104,37 @@ function priceListError(line) {
 	return "فرمت هر خط باید مانند «۹ وات ۱۶۰» باشد.";
 }
 
+function validPriceRow(line) {
+	const normalized = normalizeDigits(line).replace(/[٬,]/g, "").trim();
+	const match = normalized.match(/^(\d+)\s*وات\s+(\d+)(?:\s*(?:تومان|تومن))?$/);
+	if (!match) return false;
+	const watt = Number(match[1]);
+	const price = Number(match[2]);
+	return Number.isSafeInteger(watt) && watt > 0 && Number.isSafeInteger(price) && price > 0;
+}
+
+function headingLineIndex(rawText) {
+	const nonEmptyLines = rawText
+		.split(/\r?\n/)
+		.map((line, index) => ({ line, index }))
+		.filter(({ line }) => line.trim());
+	const firstLine = nonEmptyLines[0];
+	if (!firstLine) return null;
+
+	const normalized = normalizeDigits(firstLine.line).trim();
+	const canBeHeading = !/\d/.test(normalized) && !/وات/.test(normalized);
+	const hasPriceRowAfter = nonEmptyLines.slice(1).some(({ line }) => validPriceRow(line));
+	return canBeHeading && hasPriceRowAfter ? firstLine.index : null;
+}
+
 function parsePriceList(category, rawText) {
 	const errors = [];
 	const items = [];
+	const headingIndex = headingLineIndex(rawText);
 
 	rawText.split(/\r?\n/).forEach((line, index) => {
 		if (!line.trim()) return;
+		if (index === headingIndex) return;
 		const normalized = normalizeDigits(line).replace(/[٬,]/g, "").trim();
 		const match = normalized.match(/^(\d+)\s*وات\s+(\d+)(?:\s*(?:تومان|تومن))?$/);
 		if (!match) {

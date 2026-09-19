@@ -18,7 +18,7 @@ function corsHeaders(request) {
 	return {
 		"Access-Control-Allow-Origin": origin,
 		"Access-Control-Allow-Credentials": "true",
-		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 	"Access-Control-Allow-Headers": "Content-Type",
 		"Vary": "Origin",
 	};
@@ -53,7 +53,7 @@ async function authenticateAdmin(request, env) {
 	if (!(await pinsMatch(body.pin, env.ADMIN_PIN))) return jsonResponse({ success: false }, 401, request);
 
 	const token = await createAdminSession(env.ADMIN_SESSION_SECRET);
-	return jsonResponse({ success: true }, 200, request, { "Set-Cookie": sessionCookie(token) });
+	return jsonResponse({ success: true }, 200, request, { "Set-Cookie": sessionCookie(token, env) });
 }
 
 async function requestBody(request) {
@@ -119,7 +119,7 @@ export default {
 
 		if (pathname === "/admin/logout") {
 			if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
-			return jsonResponse({ success: true }, 200, request, { "Set-Cookie": expiredSessionCookie() });
+			return jsonResponse({ success: true }, 200, request, { "Set-Cookie": expiredSessionCookie(env) });
 		}
 
 		if (pathname === "/admin/knowledge" || pathname.startsWith("/admin/knowledge/")) {
