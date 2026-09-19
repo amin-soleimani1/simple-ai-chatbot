@@ -13,7 +13,23 @@
 	"upload_source_maps": true,
 	"ai": {
 		"binding": "AI"
-	}
+	},
+	"kv_namespaces": [
+		{
+			"binding": "APP_CONFIG",
+			"id": "de23bbce76d04b3484386e48b44d86b7"
+		}
+	],
+	"ratelimits": [
+		{
+			"name": "ADMIN_AUTH_RATE_LIMIT",
+			"namespace_id": "482731947",
+			"simple": {
+				"limit": 5,
+				"period": 60
+			}
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

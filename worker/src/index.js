@@ -1,53 +1,105 @@
 import { products } from "./knowledge.js";
+import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
 
-const CORS_HEADERS = {
-	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Methods": "POST, OPTIONS",
+const ALLOWED_ORIGINS = new Set([
+	"https://amin-soleimani1.github.io",
+	"http://localhost:5173",
+	"http://127.0.0.1:5173",
+]);
+
+function corsHeaders(request) {
+	const origin = request.headers.get("Origin");
+	if (!origin || !ALLOWED_ORIGINS.has(origin)) return {};
+
+	return {
+		"Access-Control-Allow-Origin": origin,
+		"Access-Control-Allow-Credentials": "true",
+		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 	"Access-Control-Allow-Headers": "Content-Type",
+		"Vary": "Origin",
+	};
 };
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body, status = 200, request, headers = {}) {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: {
 			"Content-Type": "application/json",
-			...CORS_HEADERS,
+			...corsHeaders(request),
+			...headers,
 		},
 	});
+}
+
+function optionsResponse(request) {
+	if (!ALLOWED_ORIGINS.has(request.headers.get("Origin"))) return new Response(null, { status: 403 });
+	return new Response(null, { status: 204, headers: corsHeaders(request) });
+}
+
+async function authenticateAdmin(request, env) {
+	const rateLimit = await env.ADMIN_AUTH_RATE_LIMIT.limit({
+		key: request.headers.get("CF-Connecting-IP") ?? "unknown",
+	});
+	if (!rateLimit.success) return jsonResponse({ success: false, error: "Too many attempts. Try again later." }, 429, request);
+
+	let body;
+	try { body = await request.json(); } catch { return jsonResponse({ success: false }, 400, request); }
+	if (typeof body?.pin !== "string" || !/^\d{6}$/.test(body.pin)) return jsonResponse({ success: false }, 400, request);
+	if (!hasAdminSecrets(env)) return jsonResponse({ success: false }, 503, request);
+	if (!(await pinsMatch(body.pin, env.ADMIN_PIN))) return jsonResponse({ success: false }, 401, request);
+
+	const token = await createAdminSession(env.ADMIN_SESSION_SECRET);
+	return jsonResponse({ success: true }, 200, request, { "Set-Cookie": sessionCookie(token) });
 }
 
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
-			return new Response(null, { status: 204, headers: CORS_HEADERS });
+			return optionsResponse(request);
 		}
 
 		const { pathname } = new URL(request.url);
 
+		if (pathname === "/admin/auth") {
+			if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+			return authenticateAdmin(request, env);
+		}
+
+		if (pathname === "/admin/session") {
+			if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405, request);
+			const authenticated = await requireAdmin(request, env);
+			return jsonResponse({ authenticated }, authenticated ? 200 : 401, request);
+		}
+
+		if (pathname === "/admin/logout") {
+			if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+			return jsonResponse({ success: true }, 200, request, { "Set-Cookie": expiredSessionCookie() });
+		}
+
 		if (pathname !== "/chat") {
-			return jsonResponse({ error: "Endpoint not found." }, 404);
+			return jsonResponse({ error: "Endpoint not found." }, 404, request);
 		}
 
 		if (request.method !== "POST") {
-			return jsonResponse({ error: "Method not allowed." }, 405);
+			return jsonResponse({ error: "Method not allowed." }, 405, request);
 		}
 
 		let body;
 		try {
 			body = await request.json();
 		} catch {
-			return jsonResponse({ error: "Request body must be valid JSON." }, 400);
+			return jsonResponse({ error: "Request body must be valid JSON." }, 400, request);
 		}
 
 		if (typeof body?.message !== "string" || !body.message.trim() || body.message.trim().length > MAX_MESSAGE_LENGTH) {
-			return jsonResponse({ error: "Message must be a non-empty string." }, 400);
+			return jsonResponse({ error: "Message must be a non-empty string." }, 400, request);
 		}
 
 		if (body.history !== undefined && !Array.isArray(body.history)) {
-			return jsonResponse({ error: "History must be an array." }, 400);
+			return jsonResponse({ error: "History must be an array." }, 400, request);
 		}
 
 		const history = (body.history ?? []).slice(-MAX_HISTORY_ITEMS);
@@ -60,7 +112,7 @@ export default {
 		));
 
 		if (hasInvalidHistoryItem) {
-			return jsonResponse({ error: "History contains an invalid message." }, 400);
+			return jsonResponse({ error: "History contains an invalid message." }, 400, request);
 		}
 
 		try {
@@ -79,9 +131,9 @@ export default {
 				throw new Error("Unexpected AI response");
 			}
 
-			return jsonResponse({ message: result.response });
+			return jsonResponse({ message: result.response }, 200, request);
 		} catch {
-			return jsonResponse({ error: "Unable to generate a response." }, 502);
+			return jsonResponse({ error: "Unable to generate a response." }, 502, request);
 		}
 	},
 };
