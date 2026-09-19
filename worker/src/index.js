@@ -1,5 +1,6 @@
 import { products } from "./knowledge.js";
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
+import { createDynamicKnowledgeCategory, getKnowledgeRecord, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -55,6 +56,48 @@ async function authenticateAdmin(request, env) {
 	return jsonResponse({ success: true }, 200, request, { "Set-Cookie": sessionCookie(token) });
 }
 
+async function requestBody(request) {
+	try { return await request.json(); } catch { return null; }
+}
+
+async function handleKnowledge(request, env, pathname) {
+	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
+	const parts = pathname.split("/").filter(Boolean);
+	const categoryId = parts[2];
+	const isPreview = parts[3] === "preview";
+
+	if (!categoryId) {
+		if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		return jsonResponse({ categories: await listKnowledgeCategories(env) }, 200, request);
+	}
+	if (categoryId === "categories" && parts.length === 3) {
+		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		const body = await requestBody(request);
+		if (!body) return jsonResponse({ error: "Knowledge category request body is invalid." }, 400, request);
+		try {
+			const category = await createDynamicKnowledgeCategory(env, body.title, body.type);
+			return jsonResponse({ category }, 201, request);
+		} catch (error) {
+			return jsonResponse({ error: error.message ?? "Unable to create knowledge category." }, error.status ?? 500, request);
+		}
+	}
+	const category = await resolveKnowledgeCategory(env, categoryId);
+	if (!category || (parts.length > 3 && !isPreview) || parts.length > 4) return jsonResponse({ error: "Knowledge category not found." }, 404, request);
+	if (isPreview) {
+		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		const body = await requestBody(request);
+		if (!body || typeof body.rawText !== "string") return jsonResponse({ valid: false, changed: false, parsedData: null, changes: [], errors: [{ line: 1, message: "متن ورودی معتبر نیست." }] }, 400, request);
+		const preview = await previewKnowledge(env, category, body.rawText);
+		return jsonResponse(preview, preview.valid ? 200 : 400, request);
+	}
+	if (request.method === "GET") return jsonResponse({ category, knowledge: await getKnowledgeRecord(env, category) }, 200, request);
+	if (request.method !== "PUT") return jsonResponse({ error: "Method not allowed." }, 405, request);
+	const body = await requestBody(request);
+	if (!body || typeof body.rawText !== "string") return jsonResponse({ valid: false, changed: false, parsedData: null, changes: [], errors: [{ line: 1, message: "متن ورودی معتبر نیست." }] }, 400, request);
+	const result = await saveKnowledge(env, category, body.rawText);
+	return jsonResponse(result, result.valid ? 200 : 400, request);
+}
+
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
@@ -77,6 +120,14 @@ export default {
 		if (pathname === "/admin/logout") {
 			if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
 			return jsonResponse({ success: true }, 200, request, { "Set-Cookie": expiredSessionCookie() });
+		}
+
+		if (pathname === "/admin/knowledge" || pathname.startsWith("/admin/knowledge/")) {
+			try {
+				return await handleKnowledge(request, env, pathname);
+			} catch {
+				return jsonResponse({ error: "Unable to access knowledge storage." }, 500, request);
+			}
 		}
 
 		if (pathname !== "/chat") {
