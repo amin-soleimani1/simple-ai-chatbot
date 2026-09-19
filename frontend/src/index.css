@@ -4,3 +4,12 @@
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100dvh; margin: 0; }
 button, textarea { font: inherit; }
+
+.conversation-scroll {
+  scrollbar-color: #4b333d #171216;
+  scrollbar-width: thin;
+}
+
+.conversation-scroll::-webkit-scrollbar { width: 6px; }
+.conversation-scroll::-webkit-scrollbar-track { background: #171216; }
+.conversation-scroll::-webkit-scrollbar-thumb { background: #4b333d; border-radius: 999px; }
