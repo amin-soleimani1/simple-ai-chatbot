@@ -64,13 +64,17 @@ function ChatbotApp() {
 
 function App() {
   const [isAdminRoute, setIsAdminRoute] = useState(() => getAdminPath(window.location.pathname).startsWith("/admin"));
-  const [adminSessionState, setAdminSessionState] = useState("idle");
+  const [adminSessionState, setAdminSessionState] = useState(() => (
+    getAdminPath(window.location.pathname).startsWith("/admin") ? "checking" : "idle"
+  ));
+  const isAdminRouteRef = useRef(isAdminRoute);
 
   useEffect(() => {
     const updateRoute = () => {
       const nextIsAdminRoute = getAdminPath(window.location.pathname).startsWith("/admin");
+      if (nextIsAdminRoute && !isAdminRouteRef.current) setAdminSessionState("checking");
+      isAdminRouteRef.current = nextIsAdminRoute;
       setIsAdminRoute(nextIsAdminRoute);
-      if (nextIsAdminRoute) setAdminSessionState("checking");
     };
     window.addEventListener("popstate", updateRoute);
     return () => window.removeEventListener("popstate", updateRoute);
