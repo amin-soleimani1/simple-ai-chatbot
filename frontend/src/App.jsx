@@ -24,8 +24,10 @@ function ChatbotApp() {
     return () => window.clearTimeout(timeoutId);
   }, [showAccessDenied]);
 
-  async function handleSend(content) {
-    const text = content.trim();
+  async function handleSend(input) {
+    const content = typeof input === "string" ? input : input?.content;
+    const presentationRequest = typeof input === "string" ? undefined : input?.presentationRequest;
+    const text = typeof content === "string" ? content.trim() : "";
 
     if (!text || isSendingRef.current) return;
 
@@ -39,8 +41,8 @@ function ChatbotApp() {
     setMessages((items) => [...items, { id: crypto.randomUUID(), role: "user", content: text }]);
 
     try {
-      const message = await sendMessage(text, history);
-      setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: message }]);
+      const response = await sendMessage(text, history, presentationRequest);
+      setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: response.message, presentation: response.presentation }]);
     } catch {
       setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: "خطایی در ارتباط با سرور رخ داد." }]);
     } finally {

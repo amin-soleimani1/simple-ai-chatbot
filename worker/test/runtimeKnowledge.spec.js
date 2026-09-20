@@ -27,9 +27,9 @@ describe("runtime knowledge", () => {
 
 		expect(runtime.available).toBe(true);
 		expect(runtime.categories).toEqual(expect.arrayContaining([
-			{ title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } },
-			{ title: expect.any(String), type: "per_watt_price", data: { pricePerWattToman: 9000 } },
-			{ title: expect.any(String), type: "text", data: { text: "Saved text knowledge" } },
+			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } },
+			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", data: { pricePerWattToman: 9000 } },
+			{ id: "chips", title: expect.any(String), type: "text", data: { text: "Saved text knowledge" } },
 		]));
 	});
 
@@ -41,7 +41,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
 		});
 	});
 
@@ -53,7 +53,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ title: "LED strips", type: "text", data: { text: "12 volt strips" } }],
+			categories: [{ id: "led-strips", title: "LED strips", type: "text", data: { text: "12 volt strips" } }],
 		});
 	});
 
@@ -66,7 +66,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
 		});
 	});
 
@@ -95,6 +95,50 @@ describe("runtime knowledge", () => {
 		expect(prompt).toContain("24 × 9000");
 		expect(prompt).toContain("24 * 9000");
 		expect(prompt).toContain("قیمت پنل سقفی ۲۴ وات، ۲۱۶ هزار تومان است.");
+	});
+
+	it("returns a structured price table for a saved requested price-list category without calling AI", async () => {
+		const env = createRuntimeEnv({
+			"knowledge:projectors": JSON.stringify({
+				id: "projectors",
+				type: "price_list",
+				parsedData: { items: [{ watt: 50, price: 500000 }, { watt: 100, price: 1000000 }] },
+			}),
+		});
+		env.AI = { run: vi.fn() };
+
+		const response = await worker.fetch(new Request("http://example.com/chat", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				message: "projectors",
+				presentationRequest: { type: "price_table", categoryId: "projectors" },
+			}),
+		}), env);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			message: expect.any(String),
+			presentation: {
+				type: "price_table",
+				title: expect.any(String),
+				rows: [{ watt: 50, priceToman: 500000 }, { watt: 100, priceToman: 1000000 }],
+			},
+		});
+		expect(env.AI.run).not.toHaveBeenCalled();
+	});
+
+	it("keeps ordinary chat responses on the existing text path", async () => {
+		const env = createRuntimeEnv({ "knowledge:projectors": priceListRecord("projectors") });
+		env.AI = { run: vi.fn().mockResolvedValue({ response: "text reply" }) };
+		const response = await worker.fetch(new Request("http://example.com/chat", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ message: "single product question" }),
+		}), env);
+
+		expect(await response.json()).toEqual({ message: "text reply" });
+		expect(env.AI.run).toHaveBeenCalledOnce();
 	});
 
 	it("passes unavailable runtime knowledge to the chat prompt when KV fails", async () => {

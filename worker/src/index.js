@@ -59,6 +59,25 @@ async function requestBody(request) {
 	try { return await request.json(); } catch { return null; }
 }
 
+function priceTablePresentation(runtimeKnowledge, presentationRequest) {
+	if (
+		!presentationRequest
+		|| presentationRequest.type !== "price_table"
+		|| typeof presentationRequest.categoryId !== "string"
+	) return null;
+
+	const category = runtimeKnowledge.categories.find((item) => (
+		item.id === presentationRequest.categoryId && item.type === "price_list"
+	));
+	if (!category || !Array.isArray(category.data?.items) || category.data.items.length === 0) return null;
+
+	return {
+		type: "price_table",
+		title: category.title,
+		rows: category.data.items.map(({ watt, priceToman }) => ({ watt, priceToman })),
+	};
+}
+
 async function handleKnowledge(request, env, pathname) {
 	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
 	const parts = pathname.split("/").filter(Boolean);
@@ -167,6 +186,10 @@ export default {
 
 		try {
 			const runtimeKnowledge = await getRuntimeKnowledge(env);
+			const presentation = priceTablePresentation(runtimeKnowledge, body.presentationRequest);
+			if (presentation) {
+				return jsonResponse({ message: presentation.title, presentation }, 200, request);
+			}
 			const products = {
 				available: runtimeKnowledge.available,
 				categories: runtimeKnowledge.categories,

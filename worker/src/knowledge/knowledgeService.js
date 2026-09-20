@@ -226,16 +226,16 @@ function runtimeCategoryData(category, record) {
 			seenWatts.add(item.watt);
 			items.push({ watt: item.watt, priceToman: item.price });
 		}
-		return { title: category.title, type: category.type, data: { items } };
+		return { id: category.id, title: category.title, type: category.type, data: { items } };
 	}
 
 	if (category.type === "per_watt_price") {
 		if (!Number.isSafeInteger(parsedData.pricePerWatt) || parsedData.pricePerWatt <= 0) return null;
-		return { title: category.title, type: category.type, data: { pricePerWattToman: parsedData.pricePerWatt } };
+		return { id: category.id, title: category.title, type: category.type, data: { pricePerWattToman: parsedData.pricePerWatt } };
 	}
 
 	if (typeof parsedData.text !== "string" || !parsedData.text.trim()) return null;
-	return { title: category.title, type: category.type, data: { text: parsedData.text } };
+	return { id: category.id, title: category.title, type: category.type, data: { text: parsedData.text } };
 }
 
 async function getRuntimeCategoryRecord(env, category) {

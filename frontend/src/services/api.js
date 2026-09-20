@@ -7,13 +7,13 @@ async function adminRequest(path, options = {}) {
   });
 }
 
-export async function sendMessage(message, history) {
+export async function sendMessage(message, history, presentationRequest) {
   const response = await fetch(`${WORKER_URL}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, ...(presentationRequest ? { presentationRequest } : {}) }),
   });
 
   if (!response.ok) {
@@ -26,7 +26,15 @@ export async function sendMessage(message, history) {
     throw new Error("Worker response is invalid");
   }
 
-  return data.message;
+  if (data.presentation === undefined) return { message: data.message, presentation: null };
+  if (
+    data.presentation?.type !== "price_table"
+    || typeof data.presentation.title !== "string"
+    || !Array.isArray(data.presentation.rows)
+    || data.presentation.rows.some((row) => !Number.isSafeInteger(row?.watt) || row.watt <= 0 || !Number.isSafeInteger(row?.priceToman) || row.priceToman <= 0)
+  ) throw new Error("Worker presentation response is invalid");
+
+  return { message: data.message, presentation: data.presentation };
 }
 
 export async function authenticateAdmin(pin) {
