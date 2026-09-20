@@ -73,6 +73,7 @@ function priceTablePresentation(runtimeKnowledge, presentationRequest) {
 
 	return {
 		type: "price_table",
+		categoryId: category.id,
 		title: category.title,
 		rows: category.data.items.map(({ watt, priceToman }) => ({ watt, priceToman })),
 	};

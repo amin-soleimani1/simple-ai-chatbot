@@ -121,6 +121,7 @@ describe("runtime knowledge", () => {
 			message: expect.any(String),
 			presentation: {
 				type: "price_table",
+				categoryId: "projectors",
 				title: expect.any(String),
 				rows: [{ watt: 50, priceToman: 500000 }, { watt: 100, priceToman: 1000000 }],
 			},

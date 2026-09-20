@@ -29,6 +29,7 @@ export async function sendMessage(message, history, presentationRequest) {
   if (data.presentation === undefined) return { message: data.message, presentation: null };
   if (
     data.presentation?.type !== "price_table"
+    || typeof data.presentation.categoryId !== "string"
     || typeof data.presentation.title !== "string"
     || !Array.isArray(data.presentation.rows)
     || data.presentation.rows.some((row) => !Number.isSafeInteger(row?.watt) || row.watt <= 0 || !Number.isSafeInteger(row?.priceToman) || row.priceToman <= 0)
