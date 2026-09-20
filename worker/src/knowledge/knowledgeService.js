@@ -209,6 +209,60 @@ export async function getKnowledgeRecord(env, category) {
 	return getJson(env, knowledgeCategoryKey(category.id));
 }
 
+function runtimeCategoryData(category, record) {
+	if (!record || typeof record !== "object" || Array.isArray(record)) return null;
+	if (record.id !== undefined && record.id !== category.id) return null;
+	if (record.type !== undefined && record.type !== category.type) return null;
+
+	const parsedData = record.parsedData;
+	if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) return null;
+
+	if (category.type === "price_list") {
+		if (!Array.isArray(parsedData.items) || parsedData.items.length === 0) return null;
+		const seenWatts = new Set();
+		const items = [];
+		for (const item of parsedData.items) {
+			if (!item || !Number.isSafeInteger(item.watt) || item.watt <= 0 || !Number.isSafeInteger(item.price) || item.price <= 0 || seenWatts.has(item.watt)) return null;
+			seenWatts.add(item.watt);
+			items.push({ watt: item.watt, priceToman: item.price });
+		}
+		return { title: category.title, type: category.type, data: { items } };
+	}
+
+	if (category.type === "per_watt_price") {
+		if (!Number.isSafeInteger(parsedData.pricePerWatt) || parsedData.pricePerWatt <= 0) return null;
+		return { title: category.title, type: category.type, data: { pricePerWattToman: parsedData.pricePerWatt } };
+	}
+
+	if (typeof parsedData.text !== "string" || !parsedData.text.trim()) return null;
+	return { title: category.title, type: category.type, data: { text: parsedData.text } };
+}
+
+async function getRuntimeCategoryRecord(env, category) {
+	try {
+		return await getKnowledgeRecord(env, category);
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith("Invalid JSON stored for key:")) return null;
+		throw error;
+	}
+}
+
+export async function getRuntimeKnowledge(env) {
+	try {
+		const categories = await listKnowledgeCategories(env);
+		const records = await Promise.all(categories.map((category) => getRuntimeCategoryRecord(env, category)));
+		return {
+			available: true,
+			categories: categories.flatMap((category, index) => {
+				const runtimeCategory = runtimeCategoryData(category, records[index]);
+				return runtimeCategory ? [runtimeCategory] : [];
+			}),
+		};
+	} catch {
+		return { available: false, categories: [] };
+	}
+}
+
 export async function previewKnowledge(env, category, rawText) {
 	const parsed = parseKnowledge(category, rawText);
 	if (!parsed.valid) return { ...parsed, changed: false, changes: [] };

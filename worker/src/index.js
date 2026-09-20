@@ -1,6 +1,5 @@
-import { products } from "./knowledge.js";
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { createDynamicKnowledgeCategory, getKnowledgeRecord, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge } from "./knowledge/knowledgeService.js";
+import { createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -167,6 +166,18 @@ export default {
 		}
 
 		try {
+			const runtimeKnowledge = await getRuntimeKnowledge(env);
+			const products = {
+				available: runtimeKnowledge.available,
+				categories: runtimeKnowledge.categories,
+				usageRules: [
+					"Use only this Knowledge for store information, prices, inventory, and services.",
+					"Never guess prices or store information.",
+					"If requested information is absent from Knowledge, clearly say it is not available.",
+					"If available is false, do not provide commercial or pricing information from general model knowledge.",
+					"Perform any needed calculations internally. Reply only with the concise, natural final result and never show formulas, arithmetic steps, multiplication, addition, or calculation reasoning.",
+				],
+			};
 			const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
 				messages: [
 					{
