@@ -175,7 +175,7 @@ export default {
 					"Never guess prices or store information.",
 					"If requested information is absent from Knowledge, clearly say it is not available.",
 					"If available is false, do not provide commercial or pricing information from general model knowledge.",
-					"Perform any needed calculations internally. Reply only with the concise, natural final result and never show formulas, arithmetic steps, multiplication, addition, or calculation reasoning.",
+					"قانون قطعی محاسبات: هر محاسبه را فقط داخلی انجام بده. در پاسخ نهایی فقط نتیجه نهایی را کوتاه و طبیعی اعلام کن. هرگز operands، operators، equation، formula، ضرب، جمع، مراحل محاسبه یا reasoning محاسباتی را نمایش نده. نمایش عبارت‌هایی مانند «24 × 9000»، «24 * 9000»، «9000 تومان به ازای هر وات = ...» یا هر شکل دیگری از فرمول و مراحل محاسبه ممنوع است. اگر قیمت نیاز به محاسبه دارد، مستقیماً قیمت محاسبه‌شده را اعلام کن. مثال صرفاً برای الگوی پاسخ و نه قانون خاص پنل: User: «قیمت پنل سقفی ۲۴ وات چقدره؟» Correct: «قیمت پنل سقفی ۲۴ وات، ۲۱۶ هزار تومان است.» Incorrect: «۲۴ × ۹۰۰۰ = ۲۱۶۰۰۰ تومان».",
 				],
 			};
 			const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {

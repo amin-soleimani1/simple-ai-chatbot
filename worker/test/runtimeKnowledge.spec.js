@@ -90,8 +90,11 @@ describe("runtime knowledge", () => {
 		expect(prompt).toContain('"available":true');
 		expect(prompt).toContain('"priceToman":160000');
 		expect(prompt).not.toContain('"boxedPrice"');
-		expect(prompt).toContain("Perform any needed calculations internally.");
-		expect(prompt).toContain("never show formulas, arithmetic steps, multiplication, addition, or calculation reasoning.");
+		expect(prompt).toContain("قانون قطعی محاسبات");
+		expect(prompt).toContain("هرگز operands، operators، equation، formula، ضرب، جمع، مراحل محاسبه یا reasoning محاسباتی را نمایش نده");
+		expect(prompt).toContain("24 × 9000");
+		expect(prompt).toContain("24 * 9000");
+		expect(prompt).toContain("قیمت پنل سقفی ۲۴ وات، ۲۱۶ هزار تومان است.");
 	});
 
 	it("passes unavailable runtime knowledge to the chat prompt when KV fails", async () => {
