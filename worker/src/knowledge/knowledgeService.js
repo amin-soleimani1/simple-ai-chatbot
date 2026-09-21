@@ -395,6 +395,28 @@ export async function addPriceListItem(env, category, watt, price) {
 	return nextRecord;
 }
 
+export async function deletePriceListItem(env, category, watt) {
+	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
+	if (!Number.isSafeInteger(watt) || watt <= 0) throw categoryError("Price item watt is invalid.");
+	const record = await getKnowledgeRecord(env, category);
+	const items = validStoredPriceItems(record);
+	if (!items) throw categoryError("Stored price list is invalid.", 409);
+	if (items.length === 1) throw categoryError("The last price item cannot be deleted.", 409);
+	if (!items.some((item) => item.watt === watt)) throw categoryError("Price item not found.", 404);
+	const nextItems = items.filter((item) => item.watt !== watt);
+	const nextRecord = {
+		...record,
+		id: category.id,
+		title: category.title,
+		type: category.type,
+		rawText: priceListRawText(nextItems),
+		parsedData: { ...record.parsedData, items: nextItems },
+		updatedAt: new Date().toISOString(),
+	};
+	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
+	return nextRecord;
+}
+
 export async function updatePriceListByPercentage(env, category, percentage, direction) {
 	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
 	if (!Number.isFinite(percentage) || percentage <= 0) throw categoryError("Percentage must be a positive finite number.");

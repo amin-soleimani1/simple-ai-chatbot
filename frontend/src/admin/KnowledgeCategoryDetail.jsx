@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { addKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
+import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
 function validPriceItems(knowledge) {
@@ -65,6 +65,9 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const [addPriceValue, setAddPriceValue] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
+  const [deletingWatt, setDeletingWatt] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const editingItem = items.find((item) => item.watt === editingWatt);
   const manualPrice = parseManualPrice(value);
   const percentage = parsePercentage(percentageValue);
@@ -77,6 +80,7 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const addWatt = parseManualPrice(addWattValue);
   const addPrice = parseManualPrice(addPriceValue);
   const addValidationError = addWatt === null || addPrice === null ? "توان و مبلغ نهایی معتبر وارد کنید." : "";
+  const deletingItem = items.find((item) => item.watt === deletingWatt);
   function closeEditor() {
     setEditingWatt(null); setValue(""); setPercentageValue(""); setError("");
   }
@@ -116,17 +120,30 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
     } catch { setAddError("افزودن محصول انجام نشد. توان تکراری یا خطای سرویس را بررسی کنید."); }
     finally { setAddSaving(false); }
   }
+  function cancelDelete() {
+    if (!deleting) { setDeletingWatt(null); setDeleteError(""); }
+  }
+  async function confirmDelete() {
+    if (!deletingItem || deleting) return;
+    setDeleting(true); setDeleteError("");
+    try {
+      onPriceSaved(await deleteKnowledgePriceItem(category.id, deletingItem.watt));
+      setDeletingWatt(null);
+    } catch { setDeleteError("حذف محصول انجام نشد. دوباره تلاش کنید."); }
+    finally { setDeleting(false); }
+  }
   return <section className="knowledge-price-table" aria-labelledby="knowledge-price-table-title">
     <div className="knowledge-price-table__header">
       <div><h3 id="knowledge-price-table-title">{category.title}</h3>{updatedAt && <p>آخرین به‌روزرسانی: {updatedAt}</p>}</div>
       <div className="knowledge-price-table__actions"><button className="knowledge-secondary-button" type="button" onClick={() => { setAddMode(true); setAddError(""); }} disabled={addSaving}>افزودن محصول</button><button className="knowledge-secondary-button" type="button" onClick={() => { setBatchMode(true); setBatchError(""); }} disabled={batchSaving}>تغییر درصدی همه قیمت‌ها</button><button className="knowledge-secondary-button" type="button" onClick={onReplace}>جایگزینی کل لیست</button></div>
     </div>
     {addMode && <div className="knowledge-batch-edit"><h4>افزودن محصول</h4><label className="knowledge-price-edit__input"><span>توان (وات)</span><input value={addWattValue} onChange={(event) => { setAddWattValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="توان محصول جدید" /></label><label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={addPriceValue} onChange={(event) => { setAddPriceValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="قیمت محصول جدید" /></label><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{!addValidationError ? <p>{new Intl.NumberFormat("fa-IR").format(addWatt)} وات<br />{formatAdminToman(addPrice)}</p> : <p>{addWattValue || addPriceValue ? addValidationError : "توان و مبلغ نهایی را وارد کنید."}</p>}</div>{addError && <p className="knowledge-form-error" role="alert">{addError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={addSaving} onClick={saveAdd}>{addSaving ? "در حال ذخیره..." : "تأیید و افزودن"}</button><button type="button" className="knowledge-secondary-button" disabled={addSaving} onClick={cancelAdd}>انصراف</button></div></div>}
+    {deletingItem && <div className="knowledge-batch-edit knowledge-delete-confirm" role="alertdialog" aria-labelledby="delete-price-item-title"><h4 id="delete-price-item-title">حذف محصول</h4><div className="knowledge-batch-edit__preview"><p><strong>{new Intl.NumberFormat("fa-IR").format(deletingItem.watt)} وات</strong><br />{formatAdminToman(deletingItem.price)}<br />این محصول از لیست قیمت حذف خواهد شد.</p></div>{deleteError && <p className="knowledge-form-error" role="alert">{deleteError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={deleting} onClick={confirmDelete}>{deleting ? "در حال حذف..." : "تأیید حذف"}</button><button type="button" className="knowledge-secondary-button" disabled={deleting} onClick={cancelDelete}>انصراف</button></div></div>}
     {batchMode && <div className="knowledge-batch-edit"><h4>تغییر درصدی همه قیمت‌ها</h4><label className="knowledge-price-edit__input"><span>درصد</span><input value={batchPercentageValue} onChange={(event) => { setBatchPercentageValue(event.target.value); setBatchError(""); }} inputMode="decimal" aria-label="درصد تغییر همه قیمت‌ها" /></label><div role="group" aria-label="جهت تغییر همه قیمت‌ها"><label><input type="radio" name="batch-price-direction" checked={batchDirection === "increase"} onChange={() => { setBatchDirection("increase"); setBatchError(""); }} /> افزایش</label><label><input type="radio" name="batch-price-direction" checked={batchDirection === "decrease"} onChange={() => { setBatchDirection("decrease"); setBatchError(""); }} /> کاهش</label></div><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{batchPercentage !== null && !batchValidationError ? <ul>{batchPreview.map(({ item, price }) => <li key={item.watt}><strong>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</strong><span>{formatAdminToman(item.price)} ← {formatAdminToman(price)}</span></li>)}</ul> : <p>{batchPercentageValue ? batchValidationError : "درصد و جهت تغییر را وارد کنید."}</p>}</div>{batchError && <p className="knowledge-form-error" role="alert">{batchError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={batchSaving} onClick={saveBatch}>{batchSaving ? "در حال ذخیره..." : "تأیید و ذخیره همه"}</button><button type="button" className="knowledge-secondary-button" disabled={batchSaving} onClick={cancelBatch}>انصراف</button></div></div>}
     <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit">
       <fieldset className="knowledge-price-edit__methods"><legend>روش ویرایش</legend><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "manual"} onChange={() => { setEditMethod("manual"); setError(""); }} /> مبلغ نهایی تومان</label><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "percentage"} onChange={() => { setEditMethod("percentage"); setError(""); }} /> تغییر درصدی</label></fieldset>
       {editMethod === "manual" ? <label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={value} onChange={(event) => { setValue(event.target.value); setError(""); }} inputMode="numeric" aria-label={`قیمت جدید ${item.watt} وات`} /></label> : <div className="knowledge-price-edit__percentage"><label className="knowledge-price-edit__input"><span>درصد</span><input value={percentageValue} onChange={(event) => { setPercentageValue(event.target.value); setError(""); }} inputMode="decimal" aria-label={`درصد تغییر قیمت ${item.watt} وات`} /></label><div role="group" aria-label="جهت تغییر"><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "increase"} onChange={() => { setPercentageDirection("increase"); setError(""); }} /> افزایش</label><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "decrease"} onChange={() => { setPercentageDirection("decrease"); setError(""); }} /> کاهش</label></div></div>}
-      <p className="knowledge-price-edit__preview">{editMethod === "percentage" && percentage !== null ? `${percentageDirection === "increase" ? "افزایش" : "کاهش"} ${new Intl.NumberFormat("fa-IR").format(percentage)}٪: ` : ""}{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{(error || (editMethod === "percentage" && percentageValue && validationError)) && <span role="alert">{error || validationError}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>{saving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={cancel}>انصراف</button></div> : <button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setEditMethod("manual"); setValue(String(item.price)); setPercentageValue(""); setPercentageDirection("increase"); setError(""); }}>ویرایش</button>}</td></tr>)}</tbody></table></div>
+      <p className="knowledge-price-edit__preview">{editMethod === "percentage" && percentage !== null ? `${percentageDirection === "increase" ? "افزایش" : "کاهش"} ${new Intl.NumberFormat("fa-IR").format(percentage)}٪: ` : ""}{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{(error || (editMethod === "percentage" && percentageValue && validationError)) && <span role="alert">{error || validationError}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>{saving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={cancel}>انصراف</button></div> : <div className="knowledge-price-row-actions"><button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setEditMethod("manual"); setValue(String(item.price)); setPercentageValue(""); setPercentageDirection("increase"); setError(""); }}>ویرایش</button><button type="button" className="knowledge-secondary-button knowledge-delete-button" onClick={() => { setDeletingWatt(item.watt); setDeleteError(""); }}>حذف</button></div>}</td></tr>)}</tbody></table></div>
   </section>;
 }
 

@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { addPriceListItem, createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updatePriceListByPercentage, updatePriceListItem } from "./knowledge/knowledgeService.js";
+import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updatePriceListByPercentage, updatePriceListItem } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -121,9 +121,16 @@ async function handleKnowledge(request, env, pathname) {
 		}
 	}
 	if (parts[3] === "items" && parts.length === 5) {
-		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
 		if (!category) return jsonResponse({ error: "Knowledge category not found." }, 404, request);
 		const watt = Number(parts[4]);
+		if (request.method === "DELETE") {
+			try {
+				return jsonResponse({ record: await deletePriceListItem(env, category, watt) }, 200, request);
+			} catch (error) {
+				return jsonResponse({ error: error.message ?? "Unable to delete price item." }, error.status ?? 500, request);
+			}
+		}
+		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
 		const body = await requestBody(request);
 		if (!body || !Number.isSafeInteger(body.price)) return jsonResponse({ error: "Price must be a positive integer." }, 400, request);
 		try {

@@ -155,6 +155,15 @@ export async function addKnowledgePriceItem(categoryId, watt, price) {
   return data.record;
 }
 
+export async function deleteKnowledgePriceItem(categoryId, watt) {
+  const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}/items/${encodeURIComponent(watt)}`, {
+    method: "DELETE",
+  });
+  const data = await readAdminResponse(response, "Unable to delete price item");
+  if (!data?.record?.parsedData?.items) throw new Error("Deleted price item record is invalid");
+  return data.record;
+}
+
 export async function createKnowledgeCategory({ title, type }) {
   const response = await adminRequest("/admin/knowledge/categories", {
     method: "POST",

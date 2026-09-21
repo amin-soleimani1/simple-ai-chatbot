@@ -498,6 +498,46 @@ describe("worker routes", () => {
 		expect(malformedEnv.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
+	it("deletes an existing price item with one KV write and updates runtime knowledge", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:economy-bulbs": JSON.stringify({ id: "economy-bulbs", rawText: "old", parsedData: { items: [{ watt: 20, price: 220000 }, { watt: 40, price: 420000 }, { watt: 50, price: 480000 }] }, updatedAt: "2000-01-01T00:00:00.000Z" }),
+		});
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/40", { method: "DELETE" }, env);
+		expect(response.status).toBe(200);
+		const { record } = await response.json();
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000 }, { watt: 50, price: 480000 }]);
+		expect(record.rawText).toBe("20 وات 220000 تومان\n50 وات 480000 تومان");
+		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+		const runtime = await getRuntimeKnowledge(env);
+		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).not.toContainEqual({ watt: 40, priceToman: 420000 });
+	});
+
+	it("rejects invalid price item deletions without writing", async () => {
+		const cases = [
+			{ path: "/admin/knowledge/missing/items/20" },
+			{ path: "/admin/knowledge/chips/items/20" },
+			{ path: "/admin/knowledge/economy-bulbs/items/99" },
+			{ path: "/admin/knowledge/economy-bulbs/items/0" },
+			{ path: "/admin/knowledge/economy-bulbs/items/-1" },
+			{ path: "/admin/knowledge/economy-bulbs/items/1.5" },
+		];
+		for (const testCase of cases) {
+			const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000 }, { watt: 40, price: 420000 }] } }) });
+			const { response } = await authenticatedKnowledgeRequest(testCase.path, { method: "DELETE" }, env);
+			expect(response.status).toBeGreaterThanOrEqual(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
+		const finalItemEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000 }] } }) });
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, finalItemEnv);
+		expect(response.status).toBe(409);
+		expect(finalItemEnv.APP_CONFIG.put).not.toHaveBeenCalled();
+		const malformedEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 0 }, { watt: 40, price: 420000 }] } }) });
+		const malformed = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, malformedEnv);
+		expect(malformed.response.status).toBe(409);
+		expect(malformedEnv.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
 	it("keeps the single-item price PATCH working", async () => {
 		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } }) });
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/9", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ price: 170000 }) }, env);
