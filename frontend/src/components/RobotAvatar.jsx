@@ -7,6 +7,7 @@ export default function RobotAvatar() {
       className="robot-avatar"
     >
       <circle cx="32" cy="32" r="30" className="robot-avatar__backdrop" />
+      <circle cx="32" cy="32" r="30.25" className="robot-avatar__outer-halo" />
       <circle cx="32" cy="32" r="29.25" className="robot-avatar__ring" />
       <circle cx="32" cy="32" r="28.1" className="robot-avatar__ring-highlight" transform="rotate(-112 32 32)" />
       <g className="robot-avatar__head">

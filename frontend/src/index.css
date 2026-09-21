@@ -5,12 +5,20 @@
 body { min-width: 320px; min-height: 100dvh; margin: 0; }
 button, textarea { font: inherit; }
 
+.chatbot-background {
+  background-color: #090709;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgb(76 27 29 / 22%), transparent 42%),
+    radial-gradient(ellipse at 100% 100%, rgb(94 59 22 / 7%), transparent 36%),
+    linear-gradient(145deg, #090709 0%, #080608 58%, #0d080b 100%);
+}
+
 .robot-avatar {
   display: block;
   width: 51px;
   height: 51px;
   flex: none;
-  filter: drop-shadow(0 1px 4px rgb(227 189 98 / 12%));
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 38%)) drop-shadow(0 0 7px rgb(227 189 98 / 14%));
 }
 
 .robot-avatar__left-eye,
@@ -22,8 +30,9 @@ button, textarea { font: inherit; }
 }
 
 .robot-avatar__backdrop { fill: #211a1f; }
-.robot-avatar__ring { fill: none; stroke: rgb(239 224 189 / 42%); stroke-width: 1.75; }
-.robot-avatar__ring-highlight { fill: none; stroke: rgb(255 249 231 / 30%); stroke-dasharray: 42 135; stroke-linecap: round; stroke-width: .85; }
+.robot-avatar__outer-halo { fill: none; stroke: rgb(197 144 62 / 28%); stroke-width: 1.15; filter: drop-shadow(0 0 3px rgb(227 189 98 / 18%)); }
+.robot-avatar__ring { fill: none; stroke: rgb(239 204 126 / 66%); stroke-width: 1.75; filter: drop-shadow(0 0 2px rgb(227 189 98 / 24%)); }
+.robot-avatar__ring-highlight { fill: none; stroke: rgb(255 245 211 / 48%); stroke-dasharray: 42 135; stroke-linecap: round; stroke-width: .85; filter: drop-shadow(0 0 1px rgb(255 237 182 / 24%)); }
 .robot-avatar__shell { fill: #eee0bd; stroke: #fff2ce; stroke-width: 1.2; }
 .robot-avatar__shell-highlight { fill: none; stroke: #fff8e3; stroke-linecap: round; stroke-width: 1.2; opacity: .72; }
 .robot-avatar__visor { fill: #282126; stroke: #725d42; stroke-width: 1.1; }
