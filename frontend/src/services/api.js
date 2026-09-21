@@ -7,6 +7,23 @@ async function adminRequest(path, options = {}) {
   });
 }
 
+const SUGGESTION_TYPES = new Set(["price_list", "per_watt_price", "text"]);
+const SUGGESTION_STATUSES = new Set(["available", "out_of_stock", "not_sold"]);
+
+export async function getSuggestions() {
+  const response = await fetch(`${WORKER_URL}/suggestions`);
+  if (!response.ok) throw new Error("Unable to load suggestions");
+  const data = await response.json().catch(() => { throw new Error("Suggestions response is invalid"); });
+  if (!Array.isArray(data?.suggestions) || data.suggestions.some((suggestion) => (
+    typeof suggestion?.id !== "string" || !suggestion.id.trim()
+    || typeof suggestion.title !== "string" || !suggestion.title.trim()
+    || !SUGGESTION_TYPES.has(suggestion.type)
+    || !SUGGESTION_STATUSES.has(suggestion.status)
+    || !Number.isSafeInteger(suggestion.sortOrder) || suggestion.sortOrder < 0
+  ))) throw new Error("Suggestions response is invalid");
+  return data.suggestions;
+}
+
 export async function sendMessage(message, history, presentationRequest) {
   const response = await fetch(`${WORKER_URL}/chat`, {
     method: "POST",

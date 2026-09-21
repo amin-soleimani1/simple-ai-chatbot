@@ -4,7 +4,7 @@ import ChatInput from "./components/ChatInput";
 import ChatWindow from "./components/ChatWindow";
 import Header from "./components/Header";
 import WelcomeModal from "./components/WelcomeModal";
-import { authenticateAdmin, getAdminSession, sendMessage } from "./services/api";
+import { authenticateAdmin, getAdminSession, getSuggestions, sendMessage } from "./services/api";
 import AdminPanel from "./admin/AdminPanel";
 import { getAdminPath, navigateTo, replaceTo, restoreAdminRoute } from "./admin/adminRoutes";
 
@@ -24,6 +24,21 @@ function ChatbotApp() {
   const responsePresentationTimerRef = useRef(null);
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [suggestionsError, setSuggestionsError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getSuggestions().then((nextSuggestions) => {
+      if (!active) return;
+      setSuggestions(nextSuggestions);
+      setSuggestionsError(false);
+    }).catch(() => {
+      if (active) setSuggestionsError(true);
+    }).finally(() => { if (active) setSuggestionsLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!showAccessDenied) return undefined;
@@ -99,7 +114,7 @@ function ChatbotApp() {
     return authenticated;
   }
 
-  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
+  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
 }
 
 function App() {
