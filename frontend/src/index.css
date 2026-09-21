@@ -78,13 +78,24 @@ button, textarea { font: inherit; }
 
 
 .conversation-scroll {
-  scrollbar-color: #4b333d #171216;
+  scrollbar-color: #3d352f #0b090b;
   scrollbar-width: thin;
 }
 
-.conversation-scroll::-webkit-scrollbar { width: 6px; }
-.conversation-scroll::-webkit-scrollbar-track { background: #171216; }
-.conversation-scroll::-webkit-scrollbar-thumb { background: #4b333d; border-radius: 999px; }
+.conversation-scroll::-webkit-scrollbar { width: 2px; }
+.conversation-scroll::-webkit-scrollbar-track { background: rgb(8 7 8 / 72%); }
+.conversation-scroll::-webkit-scrollbar-thumb { background: #3d352f; border: 1px solid rgb(8 7 8 / 72%); border-radius: 999px; }
+.conversation-scroll::-webkit-scrollbar-thumb:hover { background: #51443a; }
+
+.chatbot-background footer textarea {
+  scrollbar-color: #60482e transparent;
+  scrollbar-width: thin;
+}
+
+.chatbot-background footer textarea::-webkit-scrollbar { width: 4px; }
+.chatbot-background footer textarea::-webkit-scrollbar-track { background: transparent; }
+.chatbot-background footer textarea::-webkit-scrollbar-thumb { background: #60482e; border-radius: 999px; }
+.chatbot-background footer textarea::-webkit-scrollbar-thumb:hover { background: #84643c; }
 
 .conversation-suggestion-rail {
   scrollbar-width: none;
