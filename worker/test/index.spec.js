@@ -6,7 +6,7 @@ import {
 } from "cloudflare:test";
 import { describe, it, expect, vi } from "vitest";
 import worker from "../src";
-import { getKnowledgeCategory, getRuntimeKnowledge, normalizePriceListItem, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
+import { getKnowledgeCategory, getRuntimeKnowledge, KNOWLEDGE_CATEGORIES, normalizePriceListItem, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
 
 const authEnv = {
 	ADMIN_PIN: "123456",
@@ -177,6 +177,51 @@ describe("worker routes", () => {
 		}), authEnv);
 		expect(response.status).toBe(403);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+	});
+
+	it("returns enabled suggestion metadata in deterministic order without authentication or KV writes", async () => {
+		const category = (id, metadata) => ({
+			...KNOWLEDGE_CATEGORIES.find((item) => item.id === id),
+			schemaVersion: 2, showInSuggestions: true, sortOrder: 10, status: "available", ...metadata,
+		});
+		const env = createKnowledgeEnv({
+			"knowledge:categories": JSON.stringify([
+				category("economy-bulbs", { sortOrder: 20 }),
+				category("projectors", { status: "out_of_stock" }),
+				category("ceiling-panels", { status: "not_sold" }),
+				{ id: "led-strips", title: "LED strips", type: "text", schemaVersion: 2, status: "available", showInSuggestions: true, sortOrder: 15 },
+				category("chips", { showInSuggestions: false, sortOrder: 1 }),
+				{ id: "legacy-text", title: "Legacy text", type: "text" },
+			]),
+		});
+		const response = await worker.fetch(request("/suggestions", { headers: { Origin: "http://127.0.0.1:5173" } }), env);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:5173");
+		expect(await response.json()).toEqual({ suggestions: [
+			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", status: "not_sold", sortOrder: 10 },
+			{ id: "projectors", title: expect.any(String), type: "price_list", status: "out_of_stock", sortOrder: 10 },
+			{ id: "led-strips", title: "LED strips", type: "text", status: "available", sortOrder: 15 },
+			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 },
+		] });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("returns an empty suggestions list for a legacy or disabled registry without writing", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:categories": JSON.stringify([{ id: "legacy-text", title: "Legacy text", type: "text" }]),
+		});
+		const response = await worker.fetch(request("/suggestions"), env);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ suggestions: [] });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("fails safely for a malformed suggestion registry without writing", async () => {
+		const env = createKnowledgeEnv({ "knowledge:categories": "not-json" });
+		const response = await worker.fetch(request("/suggestions"), env);
+		expect(response.status).toBe(500);
+		expect(await response.json()).toEqual({ error: "Unable to access knowledge storage." });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
 	it("requires a session for knowledge routes", async () => {

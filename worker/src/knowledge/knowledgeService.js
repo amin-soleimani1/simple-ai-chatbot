@@ -269,6 +269,13 @@ export async function listKnowledgeCategories(env) {
 	return [...categories.values()];
 }
 
+export async function listSuggestionCategories(env) {
+	return (await listKnowledgeCategories(env))
+		.filter((category) => category.showInSuggestions === true)
+		.sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))
+		.map(({ id, title, type, status, sortOrder }) => ({ id, title, type, status, sortOrder }));
+}
+
 export async function updateKnowledgeCategoryStatus(env, categoryId, status) {
 	if (!CATEGORY_STATUSES.has(status)) throw categoryError("Knowledge category status is invalid.");
 	const { storedCategories, categories } = await getDynamicKnowledgeCategoryRegistry(env);

@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryStatus, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
+import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryStatus, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -197,6 +197,15 @@ export default {
 		if (pathname === "/admin/logout") {
 			if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
 			return jsonResponse({ success: true }, 200, request, { "Set-Cookie": expiredSessionCookie(env) });
+		}
+
+		if (pathname === "/suggestions") {
+			if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405, request);
+			try {
+				return jsonResponse({ suggestions: await listSuggestionCategories(env) }, 200, request);
+			} catch {
+				return jsonResponse({ error: "Unable to access knowledge storage." }, 500, request);
+			}
 		}
 
 		if (pathname === "/admin/knowledge" || pathname.startsWith("/admin/knowledge/")) {
