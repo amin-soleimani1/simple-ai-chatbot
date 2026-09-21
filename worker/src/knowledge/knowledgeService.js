@@ -14,6 +14,13 @@ const MAX_RAW_TEXT_LENGTH = 20_000;
 const CATEGORY_ID_PATTERN = /^[a-z][a-z0-9-]{0,62}$/;
 const MAX_CATEGORY_TITLE_LENGTH = 120;
 const SUPPORTED_CATEGORY_TYPES = new Set(["price_list", "per_watt_price", "text"]);
+const CATEGORY_SCHEMA_VERSION = 2;
+const CATEGORY_STATUSES = new Set(["available", "out_of_stock", "not_sold"]);
+const LEGACY_CATEGORY_METADATA = Object.freeze({
+	status: "available",
+	showInSuggestions: false,
+	sortOrder: 0,
+});
 const DIGIT_MAP = Object.freeze({
 	"۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
 	"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
@@ -29,14 +36,34 @@ export function normalizeCategoryTitle(title) {
 	return typeof title === "string" ? title.trim().replace(/\s+/g, " ") : "";
 }
 
-export function validateDynamicCategory(category, defaultIds = new Set(KNOWLEDGE_CATEGORIES.map((item) => item.id))) {
+function hasOwn(object, key) {
+	return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function hasV2Metadata(category) {
+	return ["schemaVersion", "status", "showInSuggestions", "sortOrder"].some((key) => hasOwn(category, key));
+}
+
+export function normalizeCategory(category) {
 	if (!category || typeof category !== "object" || Array.isArray(category)) throw new Error("Knowledge category must be an object.");
 	if (typeof category.id !== "string" || !CATEGORY_ID_PATTERN.test(category.id)) throw new Error("Knowledge category ID must be a lowercase slug.");
-	if (defaultIds.has(category.id)) throw new Error(`Knowledge category ID conflicts with a default category: ${category.id}`);
 	const title = normalizeCategoryTitle(category.title);
 	if (!title || title.length > MAX_CATEGORY_TITLE_LENGTH) throw new Error("Knowledge category title is invalid.");
 	if (!SUPPORTED_CATEGORY_TYPES.has(category.type)) throw new Error(`Knowledge category type is invalid: ${category.type}`);
-	return { id: category.id, title, type: category.type };
+
+	const normalized = { id: category.id, title, type: category.type };
+	if (!hasV2Metadata(category)) return { ...normalized, ...LEGACY_CATEGORY_METADATA };
+	if (category.schemaVersion !== CATEGORY_SCHEMA_VERSION) throw new Error(`Knowledge category schemaVersion must be ${CATEGORY_SCHEMA_VERSION}.`);
+	if (!CATEGORY_STATUSES.has(category.status)) throw new Error(`Knowledge category status is invalid: ${category.status}`);
+	if (typeof category.showInSuggestions !== "boolean") throw new Error("Knowledge category showInSuggestions must be a boolean.");
+	if (!Number.isSafeInteger(category.sortOrder) || category.sortOrder < 0) throw new Error("Knowledge category sortOrder must be a non-negative integer.");
+	return { ...normalized, schemaVersion: CATEGORY_SCHEMA_VERSION, status: category.status, showInSuggestions: category.showInSuggestions, sortOrder: category.sortOrder };
+}
+
+export function validateDynamicCategory(category, defaultIds = new Set(KNOWLEDGE_CATEGORIES.map((item) => item.id))) {
+	const normalized = normalizeCategory(category);
+	if (defaultIds.has(normalized.id)) throw new Error(`Knowledge category ID conflicts with a default category: ${normalized.id}`);
+	return normalized;
 }
 
 async function categoryIdFromTitle(title) {
@@ -46,32 +73,39 @@ async function categoryIdFromTitle(title) {
 }
 
 export function getKnowledgeCategory(id, dynamicCategories = []) {
-	return [...KNOWLEDGE_CATEGORIES, ...dynamicCategories].find((category) => category.id === id) ?? null;
+	const defaultCategory = KNOWLEDGE_CATEGORIES.find((category) => category.id === id);
+	if (defaultCategory) return normalizeCategory(defaultCategory);
+	return dynamicCategories.find((category) => category.id === id) ?? null;
 }
 
-export async function getDynamicKnowledgeCategories(env) {
+async function getDynamicKnowledgeCategoryRegistry(env) {
 	const storedIndex = await getJson(env, STORAGE_KEYS.KNOWLEDGE_CATEGORIES);
-	if (storedIndex === null) return [];
+	if (storedIndex === null) return { storedCategories: [], categories: [] };
 	if (!Array.isArray(storedIndex)) throw new Error("Knowledge category registry must be an array.");
 
 	const categoryIds = new Set(KNOWLEDGE_CATEGORIES.map((category) => category.id));
-	return storedIndex.map((category) => {
+	const categories = storedIndex.map((category) => {
 		const validated = validateDynamicCategory(category, categoryIds);
 		categoryIds.add(validated.id);
 		return validated;
 	});
+	return { storedCategories: storedIndex, categories };
+}
+
+export async function getDynamicKnowledgeCategories(env) {
+	return (await getDynamicKnowledgeCategoryRegistry(env)).categories;
 }
 
 export async function resolveKnowledgeCategory(env, id) {
 	return getKnowledgeCategory(id, await getDynamicKnowledgeCategories(env));
 }
 
-export async function createDynamicKnowledgeCategory(env, titleInput, type) {
+export async function createDynamicKnowledgeCategory(env, titleInput, type, metadataInput) {
 	const title = normalizeCategoryTitle(titleInput);
 	if (!title || title.length > MAX_CATEGORY_TITLE_LENGTH) throw categoryError("Knowledge category title is invalid.");
 	if (!SUPPORTED_CATEGORY_TYPES.has(type)) throw categoryError(`Knowledge category type is invalid: ${type}`);
 
-	const dynamicCategories = await getDynamicKnowledgeCategories(env);
+	const { storedCategories, categories: dynamicCategories } = await getDynamicKnowledgeCategoryRegistry(env);
 	const allCategories = [...KNOWLEDGE_CATEGORIES, ...dynamicCategories];
 	if (allCategories.some((category) => normalizeCategoryTitle(category.title) === title)) {
 		throw categoryError("Knowledge category title already exists.", 409);
@@ -79,9 +113,17 @@ export async function createDynamicKnowledgeCategory(env, titleInput, type) {
 
 	const id = await categoryIdFromTitle(title);
 	if (allCategories.some((category) => category.id === id)) throw categoryError("Knowledge category ID already exists.", 409);
-	const category = { id, title, type };
-	await putJson(env, STORAGE_KEYS.KNOWLEDGE_CATEGORIES, [...dynamicCategories, category]);
-	return category;
+	const input = { ...(metadataInput ?? {}), id, title, type };
+	let storedCategory;
+	try {
+		storedCategory = hasV2Metadata(input)
+			? normalizeCategory(input)
+			: { id, title, type };
+	} catch (error) {
+		throw categoryError(error.message);
+	}
+	await putJson(env, STORAGE_KEYS.KNOWLEDGE_CATEGORIES, [...storedCategories, storedCategory]);
+	return storedCategory;
 }
 
 export function normalizeDigits(value) {
@@ -202,7 +244,7 @@ export function buildChanges(category, previousData, nextData) {
 
 export async function listKnowledgeCategories(env) {
 	const dynamicCategories = await getDynamicKnowledgeCategories(env);
-	return [...KNOWLEDGE_CATEGORIES, ...dynamicCategories].map((category) => ({ ...category }));
+	return [...KNOWLEDGE_CATEGORIES.map((category) => normalizeCategory(category)), ...dynamicCategories.map((category) => ({ ...category }))];
 }
 
 export async function getKnowledgeRecord(env, category) {

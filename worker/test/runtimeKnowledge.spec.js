@@ -57,6 +57,18 @@ describe("runtime knowledge", () => {
 		});
 	});
 
+	it("keeps legacy dynamic categories available to runtime knowledge without migrating KV", async () => {
+		const env = createRuntimeEnv({
+			"knowledge:categories": JSON.stringify([{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list" }]),
+			"knowledge:legacy-bulbs": priceListRecord("legacy-bulbs"),
+		});
+		expect(await getRuntimeKnowledge(env)).toEqual({
+			available: true,
+			categories: [{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+		});
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
 	it("skips malformed category records without failing runtime knowledge", async () => {
 		const runtime = await getRuntimeKnowledge(createRuntimeEnv({
 			"knowledge:economy-bulbs": priceListRecord(),

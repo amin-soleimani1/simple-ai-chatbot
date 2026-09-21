@@ -94,7 +94,7 @@ async function handleKnowledge(request, env, pathname) {
 		const body = await requestBody(request);
 		if (!body) return jsonResponse({ error: "Knowledge category request body is invalid." }, 400, request);
 		try {
-			const category = await createDynamicKnowledgeCategory(env, body.title, body.type);
+			const category = await createDynamicKnowledgeCategory(env, body.title, body.type, body);
 			return jsonResponse({ category }, 201, request);
 		} catch (error) {
 			return jsonResponse({ error: error.message ?? "Unable to create knowledge category." }, error.status ?? 500, request);

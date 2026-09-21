@@ -374,7 +374,10 @@ describe("worker routes", () => {
 		const env = createKnowledgeEnv({
 			"knowledge:categories": JSON.stringify([{ id: "led-strips", title: "ریسه LED", type: "text" }]),
 		});
-		expect(await resolveKnowledgeCategory(env, "led-strips")).toEqual({ id: "led-strips", title: "ریسه LED", type: "text" });
+		expect(await resolveKnowledgeCategory(env, "led-strips")).toEqual({
+			id: "led-strips", title: "ریسه LED", type: "text",
+			status: "available", showInSuggestions: false, sortOrder: 0,
+		});
 	});
 
 	it("gets a dynamic category", async () => {
@@ -383,7 +386,23 @@ describe("worker routes", () => {
 		});
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/led-strips", {}, env);
 		expect(response.status).toBe(200);
-		expect((await response.json()).category).toEqual({ id: "led-strips", title: "ریسه LED", type: "text" });
+		expect((await response.json()).category).toEqual({
+			id: "led-strips", title: "ریسه LED", type: "text",
+			status: "available", showInSuggestions: false, sortOrder: 0,
+		});
+	});
+
+	it("reads a legacy category with runtime metadata defaults without writing to KV", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:categories": JSON.stringify([{ id: "legacy-text", title: "Legacy text", type: "text" }]),
+		});
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/legacy-text", {}, env);
+		expect(response.status).toBe(200);
+		expect((await response.json()).category).toMatchObject({
+			id: "legacy-text", type: "text", status: "available", showInSuggestions: false, sortOrder: 0,
+		});
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		expect(env._values.get("knowledge:categories")).toBe(JSON.stringify([{ id: "legacy-text", title: "Legacy text", type: "text" }]));
 	});
 
 	it("previews a dynamic category", async () => {
@@ -443,6 +462,55 @@ describe("worker routes", () => {
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalledWith(`knowledge:${category.id}`, expect.any(String));
 	});
 
+	it("keeps the legacy dynamic category creation request compatible", async () => {
+		const env = createKnowledgeEnv();
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories", {
+			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Legacy category", type: "text" }),
+		}, env);
+		expect(response.status).toBe(201);
+		const { category } = await response.json();
+		expect(category).toMatchObject({ title: "Legacy category", type: "text" });
+		expect(category.schemaVersion).toBeUndefined();
+		expect(JSON.parse(env._values.get("knowledge:categories"))[0]).toEqual(category);
+	});
+
+	it("creates and stores a valid v2 dynamic category", async () => {
+		const env = createKnowledgeEnv();
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories", {
+			method: "POST", headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				title: "V2 category", type: "price_list", schemaVersion: 2,
+				status: "out_of_stock", showInSuggestions: true, sortOrder: 12,
+			}),
+		}, env);
+		expect(response.status).toBe(201);
+		const { category } = await response.json();
+		expect(category).toMatchObject({
+			schemaVersion: 2, title: "V2 category", type: "price_list",
+			status: "out_of_stock", showInSuggestions: true, sortOrder: 12,
+		});
+		expect(JSON.parse(env._values.get("knowledge:categories"))[0]).toEqual(category);
+	});
+
+	it("rejects invalid v2 category metadata", async () => {
+		const invalidMetadata = [
+			{ schemaVersion: 1, status: "available", showInSuggestions: false, sortOrder: 0 },
+			{ schemaVersion: 2, status: "unknown", showInSuggestions: false, sortOrder: 0 },
+			{ schemaVersion: 2, status: "available", showInSuggestions: "false", sortOrder: 0 },
+			{ schemaVersion: 2, status: "available", showInSuggestions: false, sortOrder: -1 },
+			{ schemaVersion: 2, status: "available", showInSuggestions: false, sortOrder: 1.5 },
+		];
+		for (const metadata of invalidMetadata) {
+			const env = createKnowledgeEnv();
+			const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Invalid category", type: "text", ...metadata }),
+			}, env);
+			expect(response.status).toBe(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
+	});
+
 	it("requires a session to create a dynamic category", async () => {
 		const response = await worker.fetch(request("/admin/knowledge/categories", {
 			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "ریسه LED", type: "text" }),
@@ -496,6 +564,9 @@ describe("worker routes", () => {
 		const { category } = await created.response.json();
 		const { response } = await authenticatedKnowledgeRequest(`/admin/knowledge/${category.id}`, {}, env);
 		expect(response.status).toBe(200);
-		expect((await response.json()).category).toEqual(category);
+		expect((await response.json()).category).toMatchObject({
+			...category,
+			status: "available", showInSuggestions: false, sortOrder: 0,
+		});
 	});
 });
