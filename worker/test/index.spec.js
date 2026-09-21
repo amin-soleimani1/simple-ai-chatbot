@@ -167,7 +167,7 @@ describe("worker routes", () => {
 		expect(response.status).toBe(204);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:5173");
 		expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
-		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, OPTIONS");
+		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, PATCH, OPTIONS");
 	});
 
 	it("keeps disallowed origins blocked for preflight", async () => {

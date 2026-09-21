@@ -334,3 +334,41 @@ export async function saveKnowledge(env, category, rawText) {
 	await putJson(env, knowledgeCategoryKey(category.id), record);
 	return { ...preview, saved: true, record };
 }
+
+function validStoredPriceItems(record) {
+	const items = record?.parsedData?.items;
+	if (!Array.isArray(items) || items.length === 0) return null;
+	const watts = new Set();
+	for (const item of items) {
+		if (!item || !Number.isSafeInteger(item.watt) || item.watt <= 0 || !Number.isSafeInteger(item.price) || item.price <= 0 || watts.has(item.watt)) return null;
+		watts.add(item.watt);
+	}
+	return items;
+}
+
+export function priceListRawText(items) {
+	return items.map((item) => `${item.watt} وات ${item.price} تومان`).join("\n");
+}
+
+export async function updatePriceListItem(env, category, watt, price) {
+	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
+	if (!Number.isSafeInteger(watt) || watt <= 0) throw categoryError("Price item watt is invalid.");
+	if (!Number.isSafeInteger(price) || price <= 0) throw categoryError("Price must be a positive integer.");
+	const record = await getKnowledgeRecord(env, category);
+	const items = validStoredPriceItems(record);
+	if (!items) throw categoryError("Stored price list is invalid.", 409);
+	const itemIndex = items.findIndex((item) => item.watt === watt);
+	if (itemIndex < 0) throw categoryError("Price item not found.", 404);
+	const nextItems = items.map((item, index) => index === itemIndex ? { ...item, price } : { ...item });
+	const nextRecord = {
+		...record,
+		id: category.id,
+		title: category.title,
+		type: category.type,
+		rawText: priceListRawText(nextItems),
+		parsedData: { ...record.parsedData, items: nextItems },
+		updatedAt: new Date().toISOString(),
+	};
+	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
+	return nextRecord;
+}

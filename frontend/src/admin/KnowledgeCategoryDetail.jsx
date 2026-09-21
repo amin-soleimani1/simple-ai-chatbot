@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { previewKnowledgeCategory, saveKnowledgeCategory } from "../services/api";
+import { previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
 function validPriceItems(knowledge) {
@@ -24,14 +24,33 @@ function formattedUpdatedAt(updatedAt) {
   return new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function StructuredPriceTable({ category, knowledge, items, onReplace }) {
+function parseManualPrice(value) {
+  const digits = value.replace(/[٬,]/g, "").replace(/[۰-۹]/g, (digit) => "۰۱۲۳۴۵۶۷۸۹".indexOf(digit)).replace(/[٠-٩]/g, (digit) => "٠١٢٣٤٥٦٧٨٩".indexOf(digit));
+  const price = Number(digits);
+  return /^\d+$/.test(digits) && Number.isSafeInteger(price) && price > 0 ? price : null;
+}
+
+function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSaved }) {
   const updatedAt = formattedUpdatedAt(knowledge?.updatedAt);
+  const [editingWatt, setEditingWatt] = useState(null);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const editingItem = items.find((item) => item.watt === editingWatt);
+  const nextPrice = parseManualPrice(value);
+  async function save() {
+    if (!editingItem || nextPrice === null || saving) { setError("مبلغ معتبر وارد کنید."); return; }
+    setSaving(true); setError("");
+    try { onPriceSaved(await updateKnowledgePrice(category.id, editingItem.watt, nextPrice)); setEditingWatt(null); setValue(""); }
+    catch { setError("ذخیره قیمت انجام نشد. دوباره تلاش کنید."); }
+    finally { setSaving(false); }
+  }
   return <section className="knowledge-price-table" aria-labelledby="knowledge-price-table-title">
     <div className="knowledge-price-table__header">
       <div><h3 id="knowledge-price-table-title">{category.title}</h3>{updatedAt && <p>آخرین به‌روزرسانی: {updatedAt}</p>}</div>
       <button className="knowledge-secondary-button" type="button" onClick={onReplace}>جایگزینی کل لیست</button>
     </div>
-    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td></tr>)}</tbody></table></div>
+    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit"><input value={value} onChange={(event) => setValue(event.target.value)} inputMode="numeric" aria-label={`قیمت جدید ${item.watt} وات`} /><p>{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{error && <span>{error}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>تأیید و ذخیره</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={() => { setEditingWatt(null); setError(""); }}>انصراف</button></div> : <button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setValue(String(item.price)); setError(""); }}>ویرایش</button>}</td></tr>)}</tbody></table></div>
   </section>;
 }
 
@@ -128,7 +147,7 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
         <h2 id="knowledge-category-title">{detail.category.title}</h2>
         <p>اطلاعات این دسته را وارد کنید و پیش از ذخیره، نتیجه را بررسی کنید.</p>
       </div>
-      {showStructuredPriceTable ? <StructuredPriceTable category={detail.category} knowledge={detail.knowledge} items={priceItems} onReplace={() => setReplaceMode(true)} /> : <div className="knowledge-editor">
+      {showStructuredPriceTable ? <StructuredPriceTable category={detail.category} knowledge={detail.knowledge} items={priceItems} onReplace={() => setReplaceMode(true)} onPriceSaved={onKnowledgeSaved} /> : <div className="knowledge-editor">
         {detail.category.type === "price_list" && replaceMode && <button className="knowledge-secondary-button" type="button" onClick={() => setReplaceMode(false)}>بازگشت به جدول قیمت‌ها</button>}
         {detail.category.type === "price_list" && !priceItems && detail.knowledge && <p className="knowledge-form-error" role="alert"><CircleAlert size={17} aria-hidden="true" />دادهٔ جدول قیمت معتبر نیست؛ لیست را با ورود متن جایگزین کنید.</p>}
         <label className="knowledge-field knowledge-editor__field"><span>اطلاعات این دسته</span><textarea dir="rtl" value={rawText} onChange={handleTextChange} disabled={previewState === "loading" || saveState === "loading"} /></label>

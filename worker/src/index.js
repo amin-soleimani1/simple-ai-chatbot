@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge } from "./knowledge/knowledgeService.js";
+import { createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updatePriceListItem } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -17,7 +17,7 @@ function corsHeaders(request) {
 	return {
 		"Access-Control-Allow-Origin": origin,
 		"Access-Control-Allow-Credentials": "true",
-		"Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+		"Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
 	"Access-Control-Allow-Headers": "Content-Type",
 		"Vary": "Origin",
 	};
@@ -101,6 +101,18 @@ async function handleKnowledge(request, env, pathname) {
 		}
 	}
 	const category = await resolveKnowledgeCategory(env, categoryId);
+	if (parts[3] === "items" && parts.length === 5) {
+		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		if (!category) return jsonResponse({ error: "Knowledge category not found." }, 404, request);
+		const watt = Number(parts[4]);
+		const body = await requestBody(request);
+		if (!body || !Number.isSafeInteger(body.price)) return jsonResponse({ error: "Price must be a positive integer." }, 400, request);
+		try {
+			return jsonResponse({ record: await updatePriceListItem(env, category, watt, body.price) }, 200, request);
+		} catch (error) {
+			return jsonResponse({ error: error.message ?? "Unable to update price." }, error.status ?? 500, request);
+		}
+	}
 	if (!category || (parts.length > 3 && !isPreview) || parts.length > 4) return jsonResponse({ error: "Knowledge category not found." }, 404, request);
 	if (isPreview) {
 		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
