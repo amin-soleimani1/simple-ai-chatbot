@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
+import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgeCategoryStatus, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
 function validPriceItems(knowledge) {
@@ -164,6 +164,13 @@ export default function KnowledgeCategoryDetail({ detail, onKnowledgeSaved }) {
 }
 
 function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
+
+  const statusLabels = { available: "موجود / قابل فروش", out_of_stock: "ناموجود", not_sold: "عرضه نمی‌شود" };
+  const [statusValue, setStatusValue] = useState(detail.category.status ?? "available");
+  const [savedStatus, setSavedStatus] = useState(detail.category.status ?? "available");
+  const [statusConfirming, setStatusConfirming] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState("");
   const [rawText, setRawText] = useState(detail.knowledge?.rawText ?? "");
   const [previewState, setPreviewState] = useState("idle");
   const [preview, setPreview] = useState(null);
@@ -174,6 +181,14 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
   const priceItems = detail.category.type === "price_list" ? validPriceItems(detail.knowledge) : null;
   const showStructuredPriceTable = Boolean(priceItems) && !replaceMode;
   const canSave = previewState === "valid" && preview?.valid && !previewInvalidated && previewedRawText === rawText && saveState !== "loading";
+
+  async function saveStatus() {
+    if (statusSaving || statusValue === savedStatus) return;
+    setStatusSaving(true); setStatusError("");
+    try { const category = await updateKnowledgeCategoryStatus(detail.category.id, statusValue); setSavedStatus(category.status); setStatusConfirming(false); }
+    catch { setStatusError("ذخیره وضعیت انجام نشد. دوباره تلاش کنید."); }
+    finally { setStatusSaving(false); }
+  }
 
   function handleTextChange(event) {
     setRawText(event.target.value);
@@ -240,6 +255,7 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
         <h2 id="knowledge-category-title">{detail.category.title}</h2>
         <p>اطلاعات این دسته را وارد کنید و پیش از ذخیره، نتیجه را بررسی کنید.</p>
       </div>
+      <section className="knowledge-batch-edit"><h4>وضعیت تجاری دسته</h4><select value={statusValue} onChange={(event) => { setStatusValue(event.target.value); setStatusConfirming(false); setStatusError(""); }} disabled={statusSaving}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{statusValue !== savedStatus && !statusConfirming && <button type="button" className="knowledge-secondary-button" onClick={() => setStatusConfirming(true)}>بررسی تغییر وضعیت</button>}{statusConfirming && <div className="knowledge-batch-edit__preview"><p>{detail.category.title}<br />{statusLabels[savedStatus]} ← {statusLabels[statusValue]}</p><button type="button" className="knowledge-primary-button" disabled={statusSaving} onClick={saveStatus}>{statusSaving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={statusSaving} onClick={() => { setStatusValue(savedStatus); setStatusConfirming(false); }}>انصراف</button></div>}{statusError && <p className="knowledge-form-error" role="alert">{statusError}</p>}</section>
       {showStructuredPriceTable ? <StructuredPriceTable category={detail.category} knowledge={detail.knowledge} items={priceItems} onReplace={() => setReplaceMode(true)} onPriceSaved={onKnowledgeSaved} /> : <div className="knowledge-editor">
         {detail.category.type === "price_list" && replaceMode && <button className="knowledge-secondary-button" type="button" onClick={() => setReplaceMode(false)}>بازگشت به جدول قیمت‌ها</button>}
         {detail.category.type === "price_list" && !priceItems && detail.knowledge && <p className="knowledge-form-error" role="alert"><CircleAlert size={17} aria-hidden="true" />دادهٔ جدول قیمت معتبر نیست؛ لیست را با ورود متن جایگزین کنید.</p>}

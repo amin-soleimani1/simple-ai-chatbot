@@ -174,3 +174,10 @@ export async function createKnowledgeCategory({ title, type }) {
   if (!data?.category || typeof data.category.id !== "string") throw new Error("Knowledge category response is invalid");
   return data.category;
 }
+
+export async function updateKnowledgeCategoryStatus(categoryId, status) {
+  const response = await adminRequest(`/admin/knowledge/categories/${encodeURIComponent(categoryId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+  const data = await readAdminResponse(response, "Unable to update knowledge category status");
+  if (!data?.category?.id || typeof data.category.status !== "string") throw new Error("Updated knowledge category is invalid");
+  return data.category;
+}
