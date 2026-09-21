@@ -29,7 +29,7 @@ function ConversationRail({ onSelect }) {
 
     function updateHintPosition() {
       const bounds = rail.getBoundingClientRect();
-      setHintPosition({ top: Math.max(12, bounds.top - 24), left: bounds.left + 14, right: window.innerWidth - bounds.right + 14 });
+      setHintPosition({ top: Math.max(12, bounds.top - 27), left: bounds.left + 14, right: window.innerWidth - bounds.right + 14 });
     }
 
     function dismissHints() {
@@ -63,8 +63,8 @@ function ConversationRail({ onSelect }) {
           hintEndTimeout = window.setTimeout(() => {
             hasHandledConversationRailHint = true;
             setShowHints(false);
-          }, 1850);
-        }, 900);
+          }, 2500);
+        }, 3000);
       });
     });
 
