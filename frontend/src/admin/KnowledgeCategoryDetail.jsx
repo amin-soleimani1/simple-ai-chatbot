@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
+import { addKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgePrice, updateKnowledgePricesByPercentage } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
 function validPriceItems(knowledge) {
@@ -60,6 +60,11 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const [batchDirection, setBatchDirection] = useState("increase");
   const [batchError, setBatchError] = useState("");
   const [batchSaving, setBatchSaving] = useState(false);
+  const [addMode, setAddMode] = useState(false);
+  const [addWattValue, setAddWattValue] = useState("");
+  const [addPriceValue, setAddPriceValue] = useState("");
+  const [addError, setAddError] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
   const editingItem = items.find((item) => item.watt === editingWatt);
   const manualPrice = parseManualPrice(value);
   const percentage = parsePercentage(percentageValue);
@@ -69,6 +74,9 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const batchPercentage = parsePercentage(batchPercentageValue);
   const batchPreview = items.map((item) => ({ item, ...percentagePrice(item.price, batchPercentage, batchDirection) }));
   const batchValidationError = batchPreview.find((entry) => entry.error)?.error || "";
+  const addWatt = parseManualPrice(addWattValue);
+  const addPrice = parseManualPrice(addPriceValue);
+  const addValidationError = addWatt === null || addPrice === null ? "توان و مبلغ نهایی معتبر وارد کنید." : "";
   function closeEditor() {
     setEditingWatt(null); setValue(""); setPercentageValue(""); setError("");
   }
@@ -95,11 +103,25 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
     } catch { setBatchError("ذخیره تغییرات انجام نشد. دوباره تلاش کنید."); }
     finally { setBatchSaving(false); }
   }
+  function cancelAdd() {
+    if (addSaving) return;
+    setAddMode(false); setAddWattValue(""); setAddPriceValue(""); setAddError("");
+  }
+  async function saveAdd() {
+    if (addSaving || addValidationError) { setAddError(addValidationError); return; }
+    setAddSaving(true); setAddError("");
+    try {
+      onPriceSaved(await addKnowledgePriceItem(category.id, addWatt, addPrice));
+      setAddMode(false); setAddWattValue(""); setAddPriceValue("");
+    } catch { setAddError("افزودن محصول انجام نشد. توان تکراری یا خطای سرویس را بررسی کنید."); }
+    finally { setAddSaving(false); }
+  }
   return <section className="knowledge-price-table" aria-labelledby="knowledge-price-table-title">
     <div className="knowledge-price-table__header">
       <div><h3 id="knowledge-price-table-title">{category.title}</h3>{updatedAt && <p>آخرین به‌روزرسانی: {updatedAt}</p>}</div>
-      <div className="knowledge-price-table__actions"><button className="knowledge-secondary-button" type="button" onClick={() => { setBatchMode(true); setBatchError(""); }} disabled={batchSaving}>تغییر درصدی همه قیمت‌ها</button><button className="knowledge-secondary-button" type="button" onClick={onReplace}>جایگزینی کل لیست</button></div>
+      <div className="knowledge-price-table__actions"><button className="knowledge-secondary-button" type="button" onClick={() => { setAddMode(true); setAddError(""); }} disabled={addSaving}>افزودن محصول</button><button className="knowledge-secondary-button" type="button" onClick={() => { setBatchMode(true); setBatchError(""); }} disabled={batchSaving}>تغییر درصدی همه قیمت‌ها</button><button className="knowledge-secondary-button" type="button" onClick={onReplace}>جایگزینی کل لیست</button></div>
     </div>
+    {addMode && <div className="knowledge-batch-edit"><h4>افزودن محصول</h4><label className="knowledge-price-edit__input"><span>توان (وات)</span><input value={addWattValue} onChange={(event) => { setAddWattValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="توان محصول جدید" /></label><label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={addPriceValue} onChange={(event) => { setAddPriceValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="قیمت محصول جدید" /></label><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{!addValidationError ? <p>{new Intl.NumberFormat("fa-IR").format(addWatt)} وات<br />{formatAdminToman(addPrice)}</p> : <p>{addWattValue || addPriceValue ? addValidationError : "توان و مبلغ نهایی را وارد کنید."}</p>}</div>{addError && <p className="knowledge-form-error" role="alert">{addError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={addSaving} onClick={saveAdd}>{addSaving ? "در حال ذخیره..." : "تأیید و افزودن"}</button><button type="button" className="knowledge-secondary-button" disabled={addSaving} onClick={cancelAdd}>انصراف</button></div></div>}
     {batchMode && <div className="knowledge-batch-edit"><h4>تغییر درصدی همه قیمت‌ها</h4><label className="knowledge-price-edit__input"><span>درصد</span><input value={batchPercentageValue} onChange={(event) => { setBatchPercentageValue(event.target.value); setBatchError(""); }} inputMode="decimal" aria-label="درصد تغییر همه قیمت‌ها" /></label><div role="group" aria-label="جهت تغییر همه قیمت‌ها"><label><input type="radio" name="batch-price-direction" checked={batchDirection === "increase"} onChange={() => { setBatchDirection("increase"); setBatchError(""); }} /> افزایش</label><label><input type="radio" name="batch-price-direction" checked={batchDirection === "decrease"} onChange={() => { setBatchDirection("decrease"); setBatchError(""); }} /> کاهش</label></div><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{batchPercentage !== null && !batchValidationError ? <ul>{batchPreview.map(({ item, price }) => <li key={item.watt}><strong>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</strong><span>{formatAdminToman(item.price)} ← {formatAdminToman(price)}</span></li>)}</ul> : <p>{batchPercentageValue ? batchValidationError : "درصد و جهت تغییر را وارد کنید."}</p>}</div>{batchError && <p className="knowledge-form-error" role="alert">{batchError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={batchSaving} onClick={saveBatch}>{batchSaving ? "در حال ذخیره..." : "تأیید و ذخیره همه"}</button><button type="button" className="knowledge-secondary-button" disabled={batchSaving} onClick={cancelBatch}>انصراف</button></div></div>}
     <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit">
       <fieldset className="knowledge-price-edit__methods"><legend>روش ویرایش</legend><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "manual"} onChange={() => { setEditMethod("manual"); setError(""); }} /> مبلغ نهایی تومان</label><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "percentage"} onChange={() => { setEditMethod("percentage"); setError(""); }} /> تغییر درصدی</label></fieldset>

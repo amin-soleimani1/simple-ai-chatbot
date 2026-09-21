@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updatePriceListByPercentage, updatePriceListItem } from "./knowledge/knowledgeService.js";
+import { addPriceListItem, createDynamicKnowledgeCategory, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updatePriceListByPercentage, updatePriceListItem } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -102,12 +102,18 @@ async function handleKnowledge(request, env, pathname) {
 	}
 	const category = await resolveKnowledgeCategory(env, categoryId);
 	if (parts[3] === "items" && parts.length === 4) {
-		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
 		if (!category) return jsonResponse({ error: "Knowledge category not found." }, 404, request);
 		const body = await requestBody(request);
-		if (!body || !Number.isFinite(body.percentage) || typeof body.direction !== "string") {
-			return jsonResponse({ error: "Batch price update request is invalid." }, 400, request);
+		if (request.method === "POST") {
+			if (!body || !Number.isSafeInteger(body.watt) || !Number.isSafeInteger(body.price)) return jsonResponse({ error: "Price item request is invalid." }, 400, request);
+			try {
+				return jsonResponse({ record: await addPriceListItem(env, category, body.watt, body.price) }, 201, request);
+			} catch (error) {
+				return jsonResponse({ error: error.message ?? "Unable to add price item." }, error.status ?? 500, request);
+			}
 		}
+		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		if (!body || !Number.isFinite(body.percentage) || typeof body.direction !== "string") return jsonResponse({ error: "Batch price update request is invalid." }, 400, request);
 		try {
 			return jsonResponse({ record: await updatePriceListByPercentage(env, category, body.percentage, body.direction) }, 200, request);
 		} catch (error) {

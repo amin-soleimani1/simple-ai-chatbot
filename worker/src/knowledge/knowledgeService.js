@@ -373,6 +373,28 @@ export async function updatePriceListItem(env, category, watt, price) {
 	return nextRecord;
 }
 
+export async function addPriceListItem(env, category, watt, price) {
+	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
+	if (!Number.isSafeInteger(watt) || watt <= 0) throw categoryError("Price item watt is invalid.");
+	if (!Number.isSafeInteger(price) || price <= 0) throw categoryError("Price must be a positive integer.");
+	const record = await getKnowledgeRecord(env, category);
+	const items = validStoredPriceItems(record);
+	if (!items) throw categoryError("Stored price list is invalid.", 409);
+	if (items.some((item) => item.watt === watt)) throw categoryError("Price item watt already exists.", 409);
+	const nextItems = [...items.map((item) => ({ ...item })), { watt, price }].sort((left, right) => left.watt - right.watt);
+	const nextRecord = {
+		...record,
+		id: category.id,
+		title: category.title,
+		type: category.type,
+		rawText: priceListRawText(nextItems),
+		parsedData: { ...record.parsedData, items: nextItems },
+		updatedAt: new Date().toISOString(),
+	};
+	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
+	return nextRecord;
+}
+
 export async function updatePriceListByPercentage(env, category, percentage, direction) {
 	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
 	if (!Number.isFinite(percentage) || percentage <= 0) throw categoryError("Percentage must be a positive finite number.");

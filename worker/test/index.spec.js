@@ -457,6 +457,47 @@ describe("worker routes", () => {
 		expect(malformedEnv.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
+	it("adds a price item in ascending watt order with one KV write", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:economy-bulbs": JSON.stringify({ id: "economy-bulbs", rawText: "old", parsedData: { items: [{ watt: 50, price: 480000 }, { watt: 20, price: 220000 }] }, updatedAt: "2000-01-01T00:00:00.000Z" }),
+		});
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items", {
+			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ watt: 40, price: 420000 }),
+		}, env);
+		expect(response.status).toBe(201);
+		const { record } = await response.json();
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000 }, { watt: 40, price: 420000 }, { watt: 50, price: 480000 }]);
+		expect(record.rawText).toBe("20 وات 220000 تومان\n40 وات 420000 تومان\n50 وات 480000 تومان");
+		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+		const runtime = await getRuntimeKnowledge(env);
+		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toContainEqual({ watt: 40, priceToman: 420000 });
+	});
+
+	it("rejects invalid or duplicate added price items without writing", async () => {
+		const cases = [
+			{ path: "/admin/knowledge/missing/items", body: { watt: 40, price: 420000 } },
+			{ path: "/admin/knowledge/chips/items", body: { watt: 40, price: 420000 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 20, price: 420000 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 0, price: 420000 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: -1, price: 420000 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 1.5, price: 420000 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 40, price: 0 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 40, price: -1 } },
+			{ path: "/admin/knowledge/economy-bulbs/items", body: { watt: 40, price: 1.5 } },
+		];
+		for (const testCase of cases) {
+			const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000 }] } }) });
+			const { response } = await authenticatedKnowledgeRequest(testCase.path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testCase.body) }, env);
+			expect(response.status).toBeGreaterThanOrEqual(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
+		const malformedEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 0 }] } }) });
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ watt: 40, price: 420000 }) }, malformedEnv);
+		expect(response.status).toBe(409);
+		expect(malformedEnv.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
 	it("keeps the single-item price PATCH working", async () => {
 		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } }) });
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/9", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ price: 170000 }) }, env);
