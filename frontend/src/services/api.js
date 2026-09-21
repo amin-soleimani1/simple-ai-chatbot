@@ -31,6 +31,7 @@ export async function sendMessage(message, history, presentationRequest) {
     data.presentation?.type !== "price_table"
     || typeof data.presentation.categoryId !== "string"
     || typeof data.presentation.title !== "string"
+	|| (data.presentation.status !== undefined && !["available", "out_of_stock", "not_sold"].includes(data.presentation.status))
     || !Array.isArray(data.presentation.rows)
     || data.presentation.rows.some((row) => !Number.isSafeInteger(row?.watt) || row.watt <= 0 || !Number.isSafeInteger(row?.priceToman) || row.priceToman <= 0)
   ) throw new Error("Worker presentation response is invalid");

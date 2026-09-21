@@ -27,9 +27,9 @@ describe("runtime knowledge", () => {
 
 		expect(runtime.available).toBe(true);
 		expect(runtime.categories).toEqual(expect.arrayContaining([
-			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } },
-			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", data: { pricePerWattToman: 9000 } },
-			{ id: "chips", title: expect.any(String), type: "text", data: { text: "Saved text knowledge" } },
+			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } },
+			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", status: "available", data: { pricePerWattToman: 9000 } },
+			{ id: "chips", title: expect.any(String), type: "text", status: "available", data: { text: "Saved text knowledge" } },
 		]));
 	});
 
@@ -41,7 +41,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
 		});
 	});
 
@@ -53,7 +53,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ id: "led-strips", title: "LED strips", type: "text", data: { text: "12 volt strips" } }],
+			categories: [{ id: "led-strips", title: "LED strips", type: "text", status: "available", data: { text: "12 volt strips" } }],
 		});
 	});
 
@@ -64,7 +64,7 @@ describe("runtime knowledge", () => {
 		});
 		expect(await getRuntimeKnowledge(env)).toEqual({
 			available: true,
-			categories: [{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
 		});
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
@@ -78,7 +78,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
 		});
 	});
 
@@ -101,6 +101,7 @@ describe("runtime knowledge", () => {
 		const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
 		expect(prompt).toContain('"available":true');
 		expect(prompt).toContain('"priceToman":160000');
+		expect(prompt).toContain('"status":"available"');
 		expect(prompt).not.toContain('"boxedPrice"');
 		expect(prompt).toContain("قانون قطعی محاسبات");
 		expect(prompt).toContain("هرگز operands، operators، equation، formula، ضرب، جمع، مراحل محاسبه یا reasoning محاسباتی را نمایش نده");
@@ -135,6 +136,7 @@ describe("runtime knowledge", () => {
 				type: "price_table",
 				categoryId: "projectors",
 				title: expect.any(String),
+				status: "available",
 				rows: [{ watt: 50, priceToman: 500000 }, { watt: 100, priceToman: 1000000 }],
 			},
 		});

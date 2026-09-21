@@ -75,7 +75,8 @@ function priceTablePresentation(runtimeKnowledge, presentationRequest) {
 		type: "price_table",
 		categoryId: category.id,
 		title: category.title,
-		rows: category.data.items.map(({ watt, priceToman }) => ({ watt, priceToman })),
+		status: category.status ?? "available",
+		rows: category.status === "not_sold" ? [] : category.data.items.map(({ watt, priceToman }) => ({ watt, priceToman })),
 	};
 }
 
@@ -240,6 +241,7 @@ export default {
 				available: runtimeKnowledge.available,
 				categories: runtimeKnowledge.categories,
 				usageRules: [
+					"Category status is authoritative: available prices are current; for out_of_stock state that it is unavailable and describe any stored price only as the last recorded price; for not_sold state that the store does not offer it and never present stored prices as current store prices.",
 					"Use only this Knowledge for store information, prices, inventory, and services.",
 					"Never guess prices or store information.",
 					"If requested information is absent from Knowledge, clearly say it is not available.",
