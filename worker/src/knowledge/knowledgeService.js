@@ -173,7 +173,7 @@ function parsePriceRow(line) {
 	const watt = Number(match[1]);
 	const price = normalizePriceToman(match[2], match[3]);
 	if (!Number.isSafeInteger(watt) || watt <= 0 || price === null) return null;
-	return { watt, price };
+	return { watt, price, available: true };
 }
 
 function validPriceRow(line) {
@@ -240,14 +240,20 @@ export function parseKnowledge(category, rawText) {
 export function buildChanges(category, previousData, nextData) {
 	if (!previousData) return [{ type: "created" }];
 	if (category.type === "price_list") {
-		const previous = new Map((previousData.items ?? []).map((item) => [item.watt, item.price]));
-		const next = new Map((nextData.items ?? []).map((item) => [item.watt, item.price]));
+		const previous = new Map((previousData.items ?? []).map((item) => [item.watt, item]));
+		const next = new Map((nextData.items ?? []).map((item) => [item.watt, item]));
 		const changes = [];
-		for (const [watt, price] of next) {
-			if (!previous.has(watt)) changes.push({ type: "added", watt, price });
-			else if (previous.get(watt) !== price) changes.push({ type: "updated", watt, oldPrice: previous.get(watt), newPrice: price });
+		for (const [watt, item] of next) {
+			if (!previous.has(watt)) changes.push({ type: "added", watt, price: item.price });
+			else {
+				const previousItem = normalizePriceListItem(previous.get(watt));
+				const nextItem = normalizePriceListItem(item);
+				if (!previousItem || !nextItem || previousItem.price !== nextItem.price || previousItem.available !== nextItem.available) {
+					changes.push({ type: "updated", watt, oldPrice: previous.get(watt).price, newPrice: item.price });
+				}
+			}
 		}
-		for (const [watt, price] of previous) if (!next.has(watt)) changes.push({ type: "removed", watt, price });
+		for (const [watt, item] of previous) if (!next.has(watt)) changes.push({ type: "removed", watt, price: item.price });
 		return changes;
 	}
 	if (category.type === "per_watt_price" && previousData.pricePerWatt !== nextData.pricePerWatt) {
@@ -292,9 +298,10 @@ function runtimeCategoryData(category, record) {
 		const seenWatts = new Set();
 		const items = [];
 		for (const item of parsedData.items) {
-			if (!item || !Number.isSafeInteger(item.watt) || item.watt <= 0 || !Number.isSafeInteger(item.price) || item.price <= 0 || seenWatts.has(item.watt)) return null;
-			seenWatts.add(item.watt);
-			items.push({ watt: item.watt, priceToman: item.price });
+			const normalizedItem = normalizePriceListItem(item);
+			if (!normalizedItem || seenWatts.has(normalizedItem.watt)) return null;
+			seenWatts.add(normalizedItem.watt);
+			items.push({ watt: normalizedItem.watt, priceToman: normalizedItem.price });
 		}
 		return { id: category.id, title: category.title, type: category.type, status: category.status ?? "available", data: { items } };
 	}
@@ -349,15 +356,23 @@ export async function saveKnowledge(env, category, rawText) {
 	return { ...preview, saved: true, record };
 }
 
+export function normalizePriceListItem(item) {
+	if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+	if (!Number.isSafeInteger(item.watt) || item.watt <= 0 || !Number.isSafeInteger(item.price) || item.price <= 0) return null;
+	if (hasOwn(item, "available") && typeof item.available !== "boolean") return null;
+	return { watt: item.watt, price: item.price, available: hasOwn(item, "available") ? item.available : true };
+}
+
 function validStoredPriceItems(record) {
 	const items = record?.parsedData?.items;
 	if (!Array.isArray(items) || items.length === 0) return null;
 	const watts = new Set();
 	for (const item of items) {
-		if (!item || !Number.isSafeInteger(item.watt) || item.watt <= 0 || !Number.isSafeInteger(item.price) || item.price <= 0 || watts.has(item.watt)) return null;
-		watts.add(item.watt);
+		const normalizedItem = normalizePriceListItem(item);
+		if (!normalizedItem || watts.has(normalizedItem.watt)) return null;
+		watts.add(normalizedItem.watt);
 	}
-	return items;
+	return items.map(normalizePriceListItem);
 }
 
 export function priceListRawText(items) {
@@ -395,7 +410,7 @@ export async function addPriceListItem(env, category, watt, price) {
 	const items = validStoredPriceItems(record);
 	if (!items) throw categoryError("Stored price list is invalid.", 409);
 	if (items.some((item) => item.watt === watt)) throw categoryError("Price item watt already exists.", 409);
-	const nextItems = [...items.map((item) => ({ ...item })), { watt, price }].sort((left, right) => left.watt - right.watt);
+	const nextItems = [...items.map((item) => ({ ...item })), { watt, price, available: true }].sort((left, right) => left.watt - right.watt);
 	const nextRecord = {
 		...record,
 		id: category.id,
@@ -424,6 +439,28 @@ export async function deletePriceListItem(env, category, watt) {
 		title: category.title,
 		type: category.type,
 		rawText: priceListRawText(nextItems),
+		parsedData: { ...record.parsedData, items: nextItems },
+		updatedAt: new Date().toISOString(),
+	};
+	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
+	return nextRecord;
+}
+
+export async function updatePriceListItemAvailability(env, category, watt, available) {
+	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
+	if (!Number.isSafeInteger(watt) || watt <= 0) throw categoryError("Price item watt is invalid.");
+	if (typeof available !== "boolean") throw categoryError("Price item availability must be a boolean.");
+	const record = await getKnowledgeRecord(env, category);
+	const items = validStoredPriceItems(record);
+	if (!items) throw categoryError("Stored price list is invalid.", 409);
+	const itemIndex = items.findIndex((item) => item.watt === watt);
+	if (itemIndex < 0) throw categoryError("Price item not found.", 404);
+	const nextItems = items.map((item, index) => index === itemIndex ? { ...item, available } : { ...item });
+	const nextRecord = {
+		...record,
+		id: category.id,
+		title: category.title,
+		type: category.type,
 		parsedData: { ...record.parsedData, items: nextItems },
 		updatedAt: new Date().toISOString(),
 	};

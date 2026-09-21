@@ -6,7 +6,7 @@ import {
 } from "cloudflare:test";
 import { describe, it, expect, vi } from "vitest";
 import worker from "../src";
-import { getKnowledgeCategory, getRuntimeKnowledge, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
+import { getKnowledgeCategory, getRuntimeKnowledge, normalizePriceListItem, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
 
 const authEnv = {
 	ADMIN_PIN: "123456",
@@ -210,19 +210,19 @@ describe("worker routes", () => {
 		const category = getKnowledgeCategory("iranian-bulbs-warranty");
 		expect(parseKnowledge(category, "۹وات ۱۶۰\n١٢ وات ١٨٠")).toEqual({
 			valid: true,
-			parsedData: { items: [{ watt: 9, price: 160000 }, { watt: 12, price: 180000 }] },
+			parsedData: { items: [{ watt: 9, price: 160000, available: true }, { watt: 12, price: 180000, available: true }] },
 			errors: [],
 		});
 	});
 
 	it("uses the explicit projector toman shorthand as millions", () => {
 		const category = getKnowledgeCategory("projectors");
-		expect(parseKnowledge(category, "50 وات 1 تومن").parsedData).toEqual({ items: [{ watt: 50, price: 1000000 }] });
+		expect(parseKnowledge(category, "50 وات 1 تومن").parsedData).toEqual({ items: [{ watt: 50, price: 1000000, available: true }] });
 	});
 
 	it("uses thousand-toman units for ordinary price list values", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
-		expect(parseKnowledge(category, "20 وات 300").parsedData).toEqual({ items: [{ watt: 20, price: 300000 }] });
+		expect(parseKnowledge(category, "20 وات 300").parsedData).toEqual({ items: [{ watt: 20, price: 300000, available: true }] });
 	});
 
 	it("imports a Persian price-list heading and rows as normalized toman prices", () => {
@@ -239,29 +239,29 @@ describe("worker routes", () => {
 	it("normalizes Persian, Arabic, English, and W watt syntax", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
 		expect(parseKnowledge(category, "۲۰وات ۲۲۰\n٣٠ وات ٣٥٠\n50W 480\n60w 580").parsedData).toEqual({ items: [
-			{ watt: 20, price: 220000 }, { watt: 30, price: 350000 },
-			{ watt: 50, price: 480000 }, { watt: 60, price: 580000 },
+			{ watt: 20, price: 220000, available: true }, { watt: 30, price: 350000, available: true },
+			{ watt: 50, price: 480000, available: true }, { watt: 60, price: 580000, available: true },
 		] });
 	});
 
 	it("normalizes attached toman units and conservative million shorthand", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
 		expect(parseKnowledge(category, "20 وات 220تومن\n30 وات 1800تومان\n50 وات 1تومن\n60 وات 9 تومان\n70 وات 10 تومان").parsedData).toEqual({ items: [
-			{ watt: 20, price: 220000 }, { watt: 30, price: 1800000 }, { watt: 50, price: 1000000 },
-			{ watt: 60, price: 9000000 }, { watt: 70, price: 10000 },
+			{ watt: 20, price: 220000, available: true }, { watt: 30, price: 1800000, available: true }, { watt: 50, price: 1000000, available: true },
+			{ watt: 60, price: 9000000, available: true }, { watt: 70, price: 10000, available: true },
 		] });
 	});
 
 	it("keeps explicit full toman amounts unchanged", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
 		expect(parseKnowledge(category, "20 وات 220000 تومان\n30 وات 220,000 تومان\n50 وات ۲۲۰٬۰۰۰ تومان").parsedData).toEqual({ items: [
-			{ watt: 20, price: 220000 }, { watt: 30, price: 220000 }, { watt: 50, price: 220000 },
+			{ watt: 20, price: 220000, available: true }, { watt: 30, price: 220000, available: true }, { watt: 50, price: 220000, available: true },
 		] });
 	});
 
 	it("uses the generalized million shorthand for projector imports without a category-specific rule", () => {
 		const category = getKnowledgeCategory("economy-bulbs");
-		expect(parseKnowledge(category, "50 وات 1 تومان").parsedData).toEqual({ items: [{ watt: 50, price: 1000000 }] });
+		expect(parseKnowledge(category, "50 وات 1 تومان").parsedData).toEqual({ items: [{ watt: 50, price: 1000000, available: true }] });
 	});
 
 	it("rejects zero, negative, and malformed price-list rows", () => {
@@ -305,10 +305,10 @@ describe("worker routes", () => {
 		expect(result).toEqual({
 			valid: true,
 			parsedData: { items: [
-				{ watt: 50, price: 500000 },
-				{ watt: 100, price: 1000000 },
-				{ watt: 150, price: 1500000 },
-				{ watt: 200, price: 2000000 },
+				{ watt: 50, price: 500000, available: true },
+				{ watt: 100, price: 1000000, available: true },
+				{ watt: 150, price: 1500000, available: true },
+				{ watt: 200, price: 2000000, available: true },
 			] },
 			errors: [],
 		});
@@ -416,7 +416,7 @@ describe("worker routes", () => {
 		}, env);
 		expect(response.status).toBe(200);
 		const { record } = await response.json();
-		expect(record.parsedData.items).toEqual([{ watt: 20, price: 242000 }, { watt: 30, price: 385000 }, { watt: 50, price: 528000 }]);
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 242000, available: true }, { watt: 30, price: 385000, available: true }, { watt: 50, price: 528000, available: true }]);
 		expect(record.rawText).toBe("20 وات 242000 تومان\n30 وات 385000 تومان\n50 وات 528000 تومان");
 		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
@@ -431,7 +431,7 @@ describe("worker routes", () => {
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items", {
 			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ percentage: 10, direction: "decrease" }),
 		}, env);
-		expect((await response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 95 }, { watt: 12, price: 91 }]);
+		expect((await response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 95, available: true }, { watt: 12, price: 91, available: true }]);
 	});
 
 	it("rejects invalid batch price updates without writing any item", async () => {
@@ -466,7 +466,7 @@ describe("worker routes", () => {
 		}, env);
 		expect(response.status).toBe(201);
 		const { record } = await response.json();
-		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000 }, { watt: 40, price: 420000 }, { watt: 50, price: 480000 }]);
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000, available: true }, { watt: 40, price: 420000, available: true }, { watt: 50, price: 480000, available: true }]);
 		expect(record.rawText).toBe("20 وات 220000 تومان\n40 وات 420000 تومان\n50 وات 480000 تومان");
 		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
@@ -505,7 +505,7 @@ describe("worker routes", () => {
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/40", { method: "DELETE" }, env);
 		expect(response.status).toBe(200);
 		const { record } = await response.json();
-		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000 }, { watt: 50, price: 480000 }]);
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000, available: true }, { watt: 50, price: 480000, available: true }]);
 		expect(record.rawText).toBe("20 وات 220000 تومان\n50 وات 480000 تومان");
 		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
@@ -542,7 +542,60 @@ describe("worker routes", () => {
 		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } }) });
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/9", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ price: 170000 }) }, env);
 		expect(response.status).toBe(200);
-		expect((await response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 170000 }]);
+		expect((await response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 170000, available: true }]);
+	});
+
+	it("defaults legacy item availability without writing during a read", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000 }] } }),
+		});
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs", {}, env);
+		expect(response.status).toBe(200);
+		expect((await response.json()).knowledge.parsedData.items[0]).toEqual({ watt: 20, price: 220000 });
+		expect(normalizePriceListItem({ watt: 20, price: 220000 })).toEqual({ watt: 20, price: 220000, available: true });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("updates one item availability while preserving its price, watt, raw text, and other items", async () => {
+		const env = createKnowledgeEnv({
+			"knowledge:economy-bulbs": JSON.stringify({
+				id: "economy-bulbs", rawText: "20 وات 220000 تومان\n30 وات 350000 تومان",
+				parsedData: { items: [{ watt: 20, price: 220000, available: true }, { watt: 30, price: 350000, available: false }] },
+				updatedAt: "2000-01-01T00:00:00.000Z",
+			}),
+		});
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20/availability", {
+			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ available: false }),
+		}, env);
+		expect(response.status).toBe(200);
+		const { record } = await response.json();
+		expect(record.parsedData.items).toEqual([{ watt: 20, price: 220000, available: false }, { watt: 30, price: 350000, available: false }]);
+		expect(record.rawText).toBe("20 وات 220000 تومان\n30 وات 350000 تومان");
+		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects invalid availability mutations without writing", async () => {
+		const cases = [
+			{ path: "/admin/knowledge/economy-bulbs/items/20/availability", body: { available: "true" } },
+			{ path: "/admin/knowledge/economy-bulbs/items/20/availability", body: { available: 1 } },
+			{ path: "/admin/knowledge/economy-bulbs/items/20/availability", body: { available: null } },
+			{ path: "/admin/knowledge/economy-bulbs/items/20/availability", body: {} },
+			{ path: "/admin/knowledge/economy-bulbs/items/99/availability", body: { available: true } },
+			{ path: "/admin/knowledge/economy-bulbs/items/0/availability", body: { available: true } },
+			{ path: "/admin/knowledge/missing/items/20/availability", body: { available: true } },
+			{ path: "/admin/knowledge/chips/items/20/availability", body: { available: true } },
+		];
+		for (const testCase of cases) {
+			const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000, available: true }] } }) });
+			const { response } = await authenticatedKnowledgeRequest(testCase.path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testCase.body) }, env);
+			expect(response.status).toBeGreaterThanOrEqual(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
+		const malformedEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000, available: "false" }] } }) });
+		const malformed = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20/availability", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ available: false }) }, malformedEnv);
+		expect(malformed.response.status).toBe(409);
+		expect(malformedEnv.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
 	it("keeps knowledge method guards", async () => {
