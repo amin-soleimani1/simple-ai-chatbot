@@ -96,5 +96,5 @@ export default function SuggestionButtons({ onSelect, suggestions, loading, erro
   if (!suggestions.length) return null;
   const presentedSuggestions = suggestions.map((suggestion) => ({ ...suggestion, ...(suggestionPresentation[suggestion.id] ?? { label: suggestion.title, icon: Lightbulb }) }));
   if (inConversation) return <ConversationRail onSelect={onSelect} suggestions={presentedSuggestions} />;
-  return <div className="mx-auto grid w-full max-w-4xl grid-cols-3 gap-2" dir="rtl">{presentedSuggestions.map((suggestion) => <Suggestion key={suggestion.id} {...suggestion} landing onSelect={onSelect} />)}</div>;
+  return <div className="landing-suggestions mx-auto w-full max-w-4xl" dir="rtl"><div className="grid grid-cols-3 gap-2">{presentedSuggestions.map((suggestion) => <Suggestion key={suggestion.id} {...suggestion} landing onSelect={onSelect} />)}</div></div>;
 }
