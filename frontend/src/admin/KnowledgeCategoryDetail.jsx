@@ -30,18 +30,47 @@ function parseManualPrice(value) {
   return /^\d+$/.test(digits) && Number.isSafeInteger(price) && price > 0 ? price : null;
 }
 
+function parsePercentage(value) {
+  const normalized = value.trim().replace(/[۰-۹]/g, (digit) => "۰۱۲۳۴۵۶۷۸۹".indexOf(digit)).replace(/[٠-٩]/g, (digit) => "٠١٢٣٤٥٦٧٨٩".indexOf(digit)).replace(/[٫،]/g, ".");
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const percentage = Number(normalized);
+  return Number.isFinite(percentage) && percentage > 0 ? percentage : null;
+}
+
+function percentagePrice(oldPrice, percentage, direction) {
+  if (percentage === null) return { price: null, error: "درصد معتبر وارد کنید." };
+  if (direction === "decrease" && percentage >= 100) return { price: null, error: "کاهش باید کمتر از ۱۰۰٪ باشد." };
+  if (direction === "increase" && percentage > 1000) return { price: null, error: "افزایش نمی‌تواند بیشتر از ۱۰۰۰٪ باشد." };
+  const price = Math.round(oldPrice * (1 + (direction === "increase" ? percentage : -percentage) / 100));
+  if (!Number.isSafeInteger(price) || price <= 0) return { price: null, error: "قیمت نهایی معتبر نیست." };
+  return { price, error: "" };
+}
+
 function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSaved }) {
   const updatedAt = formattedUpdatedAt(knowledge?.updatedAt);
   const [editingWatt, setEditingWatt] = useState(null);
+  const [editMethod, setEditMethod] = useState("manual");
   const [value, setValue] = useState("");
+  const [percentageValue, setPercentageValue] = useState("");
+  const [percentageDirection, setPercentageDirection] = useState("increase");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const editingItem = items.find((item) => item.watt === editingWatt);
-  const nextPrice = parseManualPrice(value);
+  const manualPrice = parseManualPrice(value);
+  const percentage = parsePercentage(percentageValue);
+  const percentageResult = editingItem ? percentagePrice(editingItem.price, percentage, percentageDirection) : { price: null, error: "" };
+  const nextPrice = editMethod === "manual" ? manualPrice : percentageResult.price;
+  const validationError = editMethod === "manual" ? (manualPrice === null ? "مبلغ معتبر وارد کنید." : "") : percentageResult.error;
+  function closeEditor() {
+    setEditingWatt(null); setValue(""); setPercentageValue(""); setError("");
+  }
+  function cancel() {
+    if (!saving) closeEditor();
+  }
   async function save() {
-    if (!editingItem || nextPrice === null || saving) { setError("مبلغ معتبر وارد کنید."); return; }
+    if (!editingItem || nextPrice === null || saving) { setError(validationError || "قیمت معتبر وارد کنید."); return; }
     setSaving(true); setError("");
-    try { onPriceSaved(await updateKnowledgePrice(category.id, editingItem.watt, nextPrice)); setEditingWatt(null); setValue(""); }
+    try { onPriceSaved(await updateKnowledgePrice(category.id, editingItem.watt, nextPrice)); closeEditor(); }
     catch { setError("ذخیره قیمت انجام نشد. دوباره تلاش کنید."); }
     finally { setSaving(false); }
   }
@@ -50,7 +79,10 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
       <div><h3 id="knowledge-price-table-title">{category.title}</h3>{updatedAt && <p>آخرین به‌روزرسانی: {updatedAt}</p>}</div>
       <button className="knowledge-secondary-button" type="button" onClick={onReplace}>جایگزینی کل لیست</button>
     </div>
-    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit"><input value={value} onChange={(event) => setValue(event.target.value)} inputMode="numeric" aria-label={`قیمت جدید ${item.watt} وات`} /><p>{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{error && <span>{error}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>تأیید و ذخیره</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={() => { setEditingWatt(null); setError(""); }}>انصراف</button></div> : <button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setValue(String(item.price)); setError(""); }}>ویرایش</button>}</td></tr>)}</tbody></table></div>
+    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit">
+      <fieldset className="knowledge-price-edit__methods"><legend>روش ویرایش</legend><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "manual"} onChange={() => { setEditMethod("manual"); setError(""); }} /> مبلغ نهایی تومان</label><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "percentage"} onChange={() => { setEditMethod("percentage"); setError(""); }} /> تغییر درصدی</label></fieldset>
+      {editMethod === "manual" ? <label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={value} onChange={(event) => { setValue(event.target.value); setError(""); }} inputMode="numeric" aria-label={`قیمت جدید ${item.watt} وات`} /></label> : <div className="knowledge-price-edit__percentage"><label className="knowledge-price-edit__input"><span>درصد</span><input value={percentageValue} onChange={(event) => { setPercentageValue(event.target.value); setError(""); }} inputMode="decimal" aria-label={`درصد تغییر قیمت ${item.watt} وات`} /></label><div role="group" aria-label="جهت تغییر"><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "increase"} onChange={() => { setPercentageDirection("increase"); setError(""); }} /> افزایش</label><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "decrease"} onChange={() => { setPercentageDirection("decrease"); setError(""); }} /> کاهش</label></div></div>}
+      <p className="knowledge-price-edit__preview">{editMethod === "percentage" && percentage !== null ? `${percentageDirection === "increase" ? "افزایش" : "کاهش"} ${new Intl.NumberFormat("fa-IR").format(percentage)}٪: ` : ""}{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{(error || (editMethod === "percentage" && percentageValue && validationError)) && <span role="alert">{error || validationError}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>{saving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={cancel}>انصراف</button></div> : <button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setEditMethod("manual"); setValue(String(item.price)); setPercentageValue(""); setPercentageDirection("increase"); setError(""); }}>ویرایش</button>}</td></tr>)}</tbody></table></div>
   </section>;
 }
 
