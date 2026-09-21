@@ -21,6 +21,7 @@ function ChatbotApp() {
   const [viewMode, setViewMode] = useState("landing");
   const hasStartedConversationRef = useRef(false);
   const landingTransitionTimerRef = useRef(null);
+  const responsePresentationTimerRef = useRef(null);
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
 
@@ -32,6 +33,7 @@ function ChatbotApp() {
 
   useEffect(() => () => window.clearTimeout(robotWakeTimerRef.current), []);
   useEffect(() => () => window.clearTimeout(landingTransitionTimerRef.current), []);
+  useEffect(() => () => window.clearTimeout(responsePresentationTimerRef.current), []);
 
   async function handleSend(input) {
     const content = typeof input === "string" ? input : input?.content;
@@ -40,10 +42,14 @@ function ChatbotApp() {
 
     if (!text || isSendingRef.current) return;
 
-    if (!hasStartedConversationRef.current) {
+    const isFirstMessage = !hasStartedConversationRef.current;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const requestStartedAt = performance.now();
+
+    if (isFirstMessage) {
       hasStartedConversationRef.current = true;
       setViewMode("transitioning");
-      const transitionDuration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 600;
+      const transitionDuration = reducedMotion ? 0 : 930;
       landingTransitionTimerRef.current = window.setTimeout(() => setViewMode("conversation"), transitionDuration);
     }
 
@@ -64,8 +70,18 @@ function ChatbotApp() {
 
     try {
       const response = await sendMessage(text, history, presentationRequest);
+      const minimumPresentationTime = reducedMotion ? 0 : (isFirstMessage ? 1110 : 320);
+      const remainingPresentationTime = Math.max(0, minimumPresentationTime - (performance.now() - requestStartedAt));
+      if (remainingPresentationTime) await new Promise((resolve) => {
+        responsePresentationTimerRef.current = window.setTimeout(resolve, remainingPresentationTime);
+      });
       setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: response.message, presentation: response.presentation }]);
     } catch {
+      const minimumPresentationTime = reducedMotion ? 0 : (isFirstMessage ? 1110 : 320);
+      const remainingPresentationTime = Math.max(0, minimumPresentationTime - (performance.now() - requestStartedAt));
+      if (remainingPresentationTime) await new Promise((resolve) => {
+        responsePresentationTimerRef.current = window.setTimeout(resolve, remainingPresentationTime);
+      });
       setMessages((items) => [...items, { id: crypto.randomUUID(), role: "assistant", content: "خطایی در ارتباط با سرور رخ داد." }]);
     } finally {
       isSendingRef.current = false;
