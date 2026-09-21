@@ -225,6 +225,53 @@ describe("worker routes", () => {
 		expect(parseKnowledge(category, "20 وات 300").parsedData).toEqual({ items: [{ watt: 20, price: 300000 }] });
 	});
 
+	it("imports a Persian price-list heading and rows as normalized toman prices", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "قیمت لامپ بدون جعبه اقتصادی یکسال گارانتی\n۲۰وات ۲۲۰\n۳۰وات ۳۵۰\n۵۰وات ۴۸۰\n۶۰وات ۵۸۰")).toMatchObject({
+			valid: true,
+			parsedData: { items: [
+				{ watt: 20, price: 220000 }, { watt: 30, price: 350000 },
+				{ watt: 50, price: 480000 }, { watt: 60, price: 580000 },
+			] },
+		});
+	});
+
+	it("normalizes Persian, Arabic, English, and W watt syntax", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "۲۰وات ۲۲۰\n٣٠ وات ٣٥٠\n50W 480\n60w 580").parsedData).toEqual({ items: [
+			{ watt: 20, price: 220000 }, { watt: 30, price: 350000 },
+			{ watt: 50, price: 480000 }, { watt: 60, price: 580000 },
+		] });
+	});
+
+	it("normalizes attached toman units and conservative million shorthand", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "20 وات 220تومن\n30 وات 1800تومان\n50 وات 1تومن\n60 وات 9 تومان\n70 وات 10 تومان").parsedData).toEqual({ items: [
+			{ watt: 20, price: 220000 }, { watt: 30, price: 1800000 }, { watt: 50, price: 1000000 },
+			{ watt: 60, price: 9000000 }, { watt: 70, price: 10000 },
+		] });
+	});
+
+	it("keeps explicit full toman amounts unchanged", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "20 وات 220000 تومان\n30 وات 220,000 تومان\n50 وات ۲۲۰٬۰۰۰ تومان").parsedData).toEqual({ items: [
+			{ watt: 20, price: 220000 }, { watt: 30, price: 220000 }, { watt: 50, price: 220000 },
+		] });
+	});
+
+	it("uses the generalized million shorthand for projector imports without a category-specific rule", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "50 وات 1 تومان").parsedData).toEqual({ items: [{ watt: 50, price: 1000000 }] });
+	});
+
+	it("rejects zero, negative, and malformed price-list rows", () => {
+		const category = getKnowledgeCategory("economy-bulbs");
+		expect(parseKnowledge(category, "0 وات 220").valid).toBe(false);
+		expect(parseKnowledge(category, "20 وات 0").valid).toBe(false);
+		expect(parseKnowledge(category, "-20 وات 220").valid).toBe(false);
+		expect(parseKnowledge(category, "20 وات قیمت").valid).toBe(false);
+	});
+
 	it("parses a panel price per watt", () => {
 		const category = getKnowledgeCategory("ceiling-panels");
 		expect(parseKnowledge(category, "هر وات ۹۰۰۰ تومان").parsedData).toEqual({ pricePerWatt: 9000 });

@@ -25,6 +25,7 @@ const DIGIT_MAP = Object.freeze({
 	"۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
 	"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
 });
+const PRICE_ROW_PATTERN = /^(\d+)\s*(?:وات|w)\s+(\d[\d,٬]*)(?:\s*(تومان|تومن))?$/i;
 
 function categoryError(message, status = 400) {
 	const error = new Error(message);
@@ -139,20 +140,44 @@ function validateRawText(rawText) {
 
 function priceListError(line) {
 	const normalized = normalizeDigits(line).replace(/[٬,]/g, "").trim();
-	const hasWatt = /وات/.test(normalized);
+	const hasWatt = /(?:وات|w)/i.test(normalized);
 	const hasNumber = /\d/.test(normalized);
-	if (hasWatt && !/وات\s+\d/.test(normalized)) return "قیمت مشخص نشده است.";
+	if (hasWatt && !/(?:وات|w)\s+\d/i.test(normalized)) return "قیمت مشخص نشده است.";
 	if (!hasWatt && hasNumber) return "توان بر حسب وات مشخص نشده است.";
 	return "فرمت هر خط باید مانند «۹ وات ۱۶۰» باشد.";
 }
 
-function validPriceRow(line) {
-	const normalized = normalizeDigits(line).replace(/[٬,]/g, "").trim();
-	const match = normalized.match(/^(\d+)\s*وات\s+(\d+)(?:\s*(?:تومان|تومن))?$/);
-	if (!match) return false;
+export function normalizePriceToman(priceToken, unit) {
+	const hasGroupingSeparator = /[,٬]/.test(priceToken);
+	const digits = normalizeDigits(priceToken).replace(/[,٬]/g, "");
+	if (!/^\d+$/.test(digits)) return null;
+
+	const value = Number(digits);
+	if (!Number.isSafeInteger(value) || value <= 0) return null;
+
+	// Grouped or six-digit values are explicit full-toman amounts. A unit-attached
+	// single digit (1 through 9) is the store import shorthand for millions.
+	const normalized = hasGroupingSeparator || digits.length >= 6
+		? value
+		: unit && value <= 9
+			? value * 1_000_000
+			: value * 1_000;
+	return Number.isSafeInteger(normalized) ? normalized : null;
+}
+
+function parsePriceRow(line) {
+	const normalized = normalizeDigits(line).trim();
+	const match = normalized.match(PRICE_ROW_PATTERN);
+	if (!match) return null;
+
 	const watt = Number(match[1]);
-	const price = Number(match[2]);
-	return Number.isSafeInteger(watt) && watt > 0 && Number.isSafeInteger(price) && price > 0;
+	const price = normalizePriceToman(match[2], match[3]);
+	if (!Number.isSafeInteger(watt) || watt <= 0 || price === null) return null;
+	return { watt, price };
+}
+
+function validPriceRow(line) {
+	return parsePriceRow(line) !== null;
 }
 
 function headingLineIndex(rawText) {
@@ -177,23 +202,12 @@ function parsePriceList(category, rawText) {
 	rawText.split(/\r?\n/).forEach((line, index) => {
 		if (!line.trim()) return;
 		if (index === headingIndex) return;
-		const normalized = normalizeDigits(line).replace(/[٬,]/g, "").trim();
-		const match = normalized.match(/^(\d+)\s*وات\s+(\d+)(?:\s*(?:تومان|تومن))?$/);
-		if (!match) {
+		const item = parsePriceRow(line);
+		if (!item) {
 			errors.push({ line: index + 1, message: priceListError(line) });
 			return;
 		}
-
-		const watt = Number(match[1]);
-		const enteredPrice = Number(match[2]);
-		if (!Number.isSafeInteger(watt) || watt <= 0 || !Number.isSafeInteger(enteredPrice) || enteredPrice <= 0) {
-			errors.push({ line: index + 1, message: "توان و قیمت باید عدد صحیح مثبت باشند." });
-			return;
-		}
-
-		const hasExplicitToman = /(?:تومان|تومن)$/.test(normalized);
-		const projectorMillion = category.id === "projectors" && hasExplicitToman && enteredPrice < 10;
-		items.push({ watt, price: enteredPrice * (projectorMillion ? 1_000_000 : 1_000) });
+		items.push(item);
 	});
 
 	if (!items.length && !errors.length) errors.push({ line: 1, message: "حداقل یک ردیف قیمت وارد کنید." });
