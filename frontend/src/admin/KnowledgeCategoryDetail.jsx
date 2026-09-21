@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgeCategoryStatus, updateKnowledgePrice, updateKnowledgePriceAvailability, updateKnowledgePricesByPercentage } from "../services/api";
+import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgeCategoryMetadata, updateKnowledgeCategoryStatus, updateKnowledgePrice, updateKnowledgePriceAvailability, updateKnowledgePricesByPercentage } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
 function validPriceItems(knowledge) {
@@ -188,6 +188,12 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
   const [statusConfirming, setStatusConfirming] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState("");
+  const [showInSuggestions, setShowInSuggestions] = useState(detail.category.showInSuggestions === true);
+  const [savedShowInSuggestions, setSavedShowInSuggestions] = useState(detail.category.showInSuggestions === true);
+  const [sortOrderValue, setSortOrderValue] = useState(String(detail.category.sortOrder ?? 0));
+  const [savedSortOrder, setSavedSortOrder] = useState(detail.category.sortOrder ?? 0);
+  const [suggestionsSaving, setSuggestionsSaving] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState("");
   const [rawText, setRawText] = useState(detail.knowledge?.rawText ?? "");
   const [previewState, setPreviewState] = useState("idle");
   const [preview, setPreview] = useState(null);
@@ -205,6 +211,23 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
     try { const category = await updateKnowledgeCategoryStatus(detail.category.id, statusValue); setSavedStatus(category.status); setStatusConfirming(false); }
     catch { setStatusError("ذخیره وضعیت انجام نشد. دوباره تلاش کنید."); }
     finally { setStatusSaving(false); }
+  }
+
+  const parsedSortOrder = /^\d+$/.test(sortOrderValue) ? Number(sortOrderValue) : null;
+  const suggestionsChanged = showInSuggestions !== savedShowInSuggestions || parsedSortOrder !== savedSortOrder;
+  const suggestionsValidationError = parsedSortOrder === null || !Number.isSafeInteger(parsedSortOrder) ? "ترتیب نمایش باید یک عدد صحیح نامنفی باشد." : "";
+
+  async function saveSuggestions() {
+    if (suggestionsSaving || !suggestionsChanged || suggestionsValidationError) return;
+    setSuggestionsSaving(true); setSuggestionsError("");
+    try {
+      const category = await updateKnowledgeCategoryMetadata(detail.category.id, { showInSuggestions, sortOrder: parsedSortOrder });
+      setSavedShowInSuggestions(category.showInSuggestions);
+      setShowInSuggestions(category.showInSuggestions);
+      setSavedSortOrder(category.sortOrder);
+      setSortOrderValue(String(category.sortOrder));
+    } catch { setSuggestionsError("ذخیره تنظیمات پیشنهادها انجام نشد. دوباره تلاش کنید."); }
+    finally { setSuggestionsSaving(false); }
   }
 
   function handleTextChange(event) {
@@ -273,6 +296,7 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
         <p>اطلاعات این دسته را وارد کنید و پیش از ذخیره، نتیجه را بررسی کنید.</p>
       </div>
       <section className="knowledge-batch-edit"><h4>وضعیت تجاری دسته</h4><select value={statusValue} onChange={(event) => { setStatusValue(event.target.value); setStatusConfirming(false); setStatusError(""); }} disabled={statusSaving}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{statusValue !== savedStatus && !statusConfirming && <button type="button" className="knowledge-secondary-button" onClick={() => setStatusConfirming(true)}>بررسی تغییر وضعیت</button>}{statusConfirming && <div className="knowledge-batch-edit__preview"><p>{detail.category.title}<br />{statusLabels[savedStatus]} ← {statusLabels[statusValue]}</p><button type="button" className="knowledge-primary-button" disabled={statusSaving} onClick={saveStatus}>{statusSaving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={statusSaving} onClick={() => { setStatusValue(savedStatus); setStatusConfirming(false); }}>انصراف</button></div>}{statusError && <p className="knowledge-form-error" role="alert">{statusError}</p>}</section>
+      <section className="knowledge-batch-edit"><h4>پیشنهادها</h4><label><input type="checkbox" checked={showInSuggestions} disabled={suggestionsSaving} onChange={(event) => { setShowInSuggestions(event.target.checked); setSuggestionsError(""); }} /> نمایش در پیشنهادها</label><label className="knowledge-price-edit__input"><span>ترتیب نمایش</span><input type="number" min="0" step="1" inputMode="numeric" value={sortOrderValue} disabled={suggestionsSaving} onChange={(event) => { setSortOrderValue(event.target.value); setSuggestionsError(""); }} /></label>{suggestionsValidationError && <p className="knowledge-form-error" role="alert">{suggestionsValidationError}</p>}{suggestionsError && <p className="knowledge-form-error" role="alert">{suggestionsError}</p>}<button type="button" className="knowledge-primary-button" disabled={suggestionsSaving || !suggestionsChanged || Boolean(suggestionsValidationError)} onClick={saveSuggestions}>{suggestionsSaving ? "در حال ذخیره..." : "ذخیره تنظیمات پیشنهادها"}</button></section>
       {showStructuredPriceTable ? <StructuredPriceTable category={detail.category} knowledge={detail.knowledge} items={priceItems} onReplace={() => setReplaceMode(true)} onPriceSaved={onKnowledgeSaved} /> : <div className="knowledge-editor">
         {detail.category.type === "price_list" && replaceMode && <button className="knowledge-secondary-button" type="button" onClick={() => setReplaceMode(false)}>بازگشت به جدول قیمت‌ها</button>}
         {detail.category.type === "price_list" && !priceItems && detail.knowledge && <p className="knowledge-form-error" role="alert"><CircleAlert size={17} aria-hidden="true" />دادهٔ جدول قیمت معتبر نیست؛ لیست را با ورود متن جایگزین کنید.</p>}

@@ -276,16 +276,25 @@ export async function listSuggestionCategories(env) {
 		.map(({ id, title, type, status, sortOrder }) => ({ id, title, type, status, sortOrder }));
 }
 
-export async function updateKnowledgeCategoryStatus(env, categoryId, status) {
-	if (!CATEGORY_STATUSES.has(status)) throw categoryError("Knowledge category status is invalid.");
+export async function updateKnowledgeCategoryMetadata(env, categoryId, patch) {
+	if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw categoryError("Knowledge category patch is invalid.");
+	const fields = Object.keys(patch);
+	if (!fields.length || fields.some((field) => !["status", "showInSuggestions", "sortOrder"].includes(field))) throw categoryError("Knowledge category patch is invalid.");
+	if (hasOwn(patch, "status") && !CATEGORY_STATUSES.has(patch.status)) throw categoryError("Knowledge category status is invalid.");
+	if (hasOwn(patch, "showInSuggestions") && typeof patch.showInSuggestions !== "boolean") throw categoryError("Knowledge category showInSuggestions must be a boolean.");
+	if (hasOwn(patch, "sortOrder") && (!Number.isSafeInteger(patch.sortOrder) || patch.sortOrder < 0)) throw categoryError("Knowledge category sortOrder must be a non-negative integer.");
 	const { storedCategories, categories } = await getDynamicKnowledgeCategoryRegistry(env);
 	const category = getKnowledgeCategory(categoryId, categories);
 	if (!category) throw categoryError("Knowledge category not found.", 404);
-	const updated = { ...category, schemaVersion: CATEGORY_SCHEMA_VERSION, status };
+	const updated = { ...category, schemaVersion: CATEGORY_SCHEMA_VERSION, ...patch };
 	const index = storedCategories.findIndex((item) => item.id === categoryId);
 	const nextCategories = index < 0 ? [...storedCategories, updated] : storedCategories.map((item, itemIndex) => itemIndex === index ? updated : item);
 	await putJson(env, STORAGE_KEYS.KNOWLEDGE_CATEGORIES, nextCategories);
 	return updated;
+}
+
+export async function updateKnowledgeCategoryStatus(env, categoryId, status) {
+	return updateKnowledgeCategoryMetadata(env, categoryId, { status });
 }
 
 export async function getKnowledgeRecord(env, category) {

@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryStatus, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
+import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -104,9 +104,8 @@ async function handleKnowledge(request, env, pathname) {
 	if (categoryId === "categories" && parts.length === 4) {
 		if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed." }, 405, request);
 		const body = await requestBody(request);
-		if (!body || typeof body.status !== "string") return jsonResponse({ error: "Knowledge category status is invalid." }, 400, request);
-		try { return jsonResponse({ category: await updateKnowledgeCategoryStatus(env, parts[3], body.status) }, 200, request); }
-		catch (error) { return jsonResponse({ error: error.message ?? "Unable to update knowledge category status." }, error.status ?? 500, request); }
+		try { return jsonResponse({ category: await updateKnowledgeCategoryMetadata(env, parts[3], body) }, 200, request); }
+		catch (error) { return jsonResponse({ error: error.message ?? "Unable to update knowledge category." }, error.status ?? 500, request); }
 	}
 	const category = await resolveKnowledgeCategory(env, categoryId);
 	if (parts[3] === "items" && parts.length === 4) {

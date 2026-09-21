@@ -188,8 +188,12 @@ export async function createKnowledgeCategory({ title, type }) {
 }
 
 export async function updateKnowledgeCategoryStatus(categoryId, status) {
-  const response = await adminRequest(`/admin/knowledge/categories/${encodeURIComponent(categoryId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-  const data = await readAdminResponse(response, "Unable to update knowledge category status");
-  if (!data?.category?.id || typeof data.category.status !== "string") throw new Error("Updated knowledge category is invalid");
-  return data.category;
+	return updateKnowledgeCategoryMetadata(categoryId, { status });
+}
+
+export async function updateKnowledgeCategoryMetadata(categoryId, patch) {
+	const response = await adminRequest(`/admin/knowledge/categories/${encodeURIComponent(categoryId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+	const data = await readAdminResponse(response, "Unable to update knowledge category");
+	if (!data?.category?.id || typeof data.category.status !== "string" || typeof data.category.showInSuggestions !== "boolean" || !Number.isSafeInteger(data.category.sortOrder)) throw new Error("Updated knowledge category is invalid");
+	return data.category;
 }

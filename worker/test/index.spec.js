@@ -224,6 +224,34 @@ describe("worker routes", () => {
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
+	it("patches suggestion metadata atomically and exposes the enabled category through suggestions", async () => {
+		const knowledgeRecord = JSON.stringify({ rawText: "private", parsedData: { items: [{ watt: 20, price: 220000 }] } });
+		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": knowledgeRecord });
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories/economy-bulbs", {
+			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ showInSuggestions: true, sortOrder: 20 }),
+		}, env);
+		expect(response.status).toBe(200);
+		const { category } = await response.json();
+		expect(category).toMatchObject({ id: "economy-bulbs", type: "price_list", status: "available", schemaVersion: 2, showInSuggestions: true, sortOrder: 20 });
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledgeRecord);
+		const suggestions = await worker.fetch(request("/suggestions"), env);
+		expect(await suggestions.json()).toEqual({ suggestions: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 }] });
+	});
+
+	it("rejects invalid or empty category metadata patches without writing", async () => {
+		const invalidPatches = [
+			{}, { showInSuggestions: "true" }, { showInSuggestions: 1 }, { showInSuggestions: null },
+			{ sortOrder: -1 }, { sortOrder: 1.5 }, { sortOrder: "10" }, { sortOrder: null }, { unknown: true },
+		];
+		for (const body of invalidPatches) {
+			const env = createKnowledgeEnv();
+			const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories/economy-bulbs", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, env);
+			expect(response.status).toBe(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
+	});
+
 	it("requires a session for knowledge routes", async () => {
 		const response = await worker.fetch(request("/admin/knowledge"), createKnowledgeEnv());
 		expect(response.status).toBe(401);
