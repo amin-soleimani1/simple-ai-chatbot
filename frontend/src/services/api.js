@@ -134,6 +134,17 @@ export async function updateKnowledgePrice(categoryId, watt, price) {
   return data.record;
 }
 
+export async function updateKnowledgePriceAvailability(categoryId, watt, available) {
+  const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}/items/${encodeURIComponent(watt)}/availability`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ available }),
+  });
+  const data = await readAdminResponse(response, "Unable to update item availability");
+  if (!data?.record?.parsedData?.items) throw new Error("Updated item availability record is invalid");
+  return data.record;
+}
+
 export async function updateKnowledgePricesByPercentage(categoryId, percentage, direction) {
   const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}/items`, {
     method: "PATCH",
