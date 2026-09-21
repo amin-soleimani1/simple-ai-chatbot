@@ -372,3 +372,32 @@ export async function updatePriceListItem(env, category, watt, price) {
 	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
 	return nextRecord;
 }
+
+export async function updatePriceListByPercentage(env, category, percentage, direction) {
+	if (category.type !== "price_list") throw categoryError("Knowledge category is not a price list.", 400);
+	if (!Number.isFinite(percentage) || percentage <= 0) throw categoryError("Percentage must be a positive finite number.");
+	if (direction !== "increase" && direction !== "decrease") throw categoryError("Price direction is invalid.");
+	if (direction === "decrease" && percentage >= 100) throw categoryError("Decrease percentage must be less than 100.");
+	if (direction === "increase" && percentage > 1000) throw categoryError("Increase percentage cannot exceed 1000.");
+
+	const record = await getKnowledgeRecord(env, category);
+	const items = validStoredPriceItems(record);
+	if (!items) throw categoryError("Stored price list is invalid.", 409);
+	const multiplier = 1 + (direction === "increase" ? percentage : -percentage) / 100;
+	const nextItems = items.map((item) => ({ ...item, price: Math.round(item.price * multiplier) }));
+	if (nextItems.some((item) => !Number.isSafeInteger(item.price) || item.price <= 0)) {
+		throw categoryError("Calculated price is invalid.");
+	}
+
+	const nextRecord = {
+		...record,
+		id: category.id,
+		title: category.title,
+		type: category.type,
+		rawText: priceListRawText(nextItems),
+		parsedData: { ...record.parsedData, items: nextItems },
+		updatedAt: new Date().toISOString(),
+	};
+	await putJson(env, knowledgeCategoryKey(category.id), nextRecord);
+	return nextRecord;
+}
