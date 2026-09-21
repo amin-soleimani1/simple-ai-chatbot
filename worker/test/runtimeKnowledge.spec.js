@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src";
-import { getRuntimeKnowledge } from "../src/knowledge/knowledgeService.js";
+import { getRuntimeKnowledge, KNOWLEDGE_CATEGORIES } from "../src/knowledge/knowledgeService.js";
 
 function createRuntimeEnv(initialValues = {}) {
 	const values = new Map(Object.entries(initialValues));
@@ -13,8 +13,8 @@ function createRuntimeEnv(initialValues = {}) {
 	};
 }
 
-function priceListRecord(id = "economy-bulbs") {
-	return JSON.stringify({ id, type: "price_list", rawText: "not parsed at runtime", parsedData: { items: [{ watt: 9, price: 160000 }] } });
+function priceListRecord(id = "economy-bulbs", items = [{ watt: 9, price: 160000 }]) {
+	return JSON.stringify({ id, type: "price_list", rawText: "not parsed at runtime", parsedData: { items } });
 }
 
 describe("runtime knowledge", () => {
@@ -27,7 +27,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime.available).toBe(true);
 		expect(runtime.categories).toEqual(expect.arrayContaining([
-			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } },
+			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000, available: true }] } },
 			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", status: "available", data: { pricePerWattToman: 9000 } },
 			{ id: "chips", title: expect.any(String), type: "text", status: "available", data: { text: "Saved text knowledge" } },
 		]));
@@ -41,7 +41,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000, available: true }] } }],
 		});
 	});
 
@@ -64,9 +64,39 @@ describe("runtime knowledge", () => {
 		});
 		expect(await getRuntimeKnowledge(env)).toEqual({
 			available: true,
-			categories: [{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "legacy-bulbs", title: "Legacy bulbs", type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000, available: true }] } }],
 		});
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("exposes explicit item availability and defaults legacy items to available without KV writes", async () => {
+		const env = createRuntimeEnv({
+			"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [
+				{ watt: 20, price: 220000, available: true },
+				{ watt: 30, price: 350000, available: false },
+				{ watt: 40, price: 420000 },
+			]),
+		});
+		const runtime = await getRuntimeKnowledge(env);
+		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toEqual([
+			{ watt: 20, priceToman: 220000, available: true },
+			{ watt: 30, priceToman: 350000, available: false },
+			{ watt: 40, priceToman: 420000, available: true },
+		]);
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("keeps category status separate from item availability in runtime knowledge", async () => {
+		const economyCategory = KNOWLEDGE_CATEGORIES.find((category) => category.id === "economy-bulbs");
+		for (const status of ["available", "out_of_stock", "not_sold"]) {
+			const runtime = await getRuntimeKnowledge(createRuntimeEnv({
+				"knowledge:categories": JSON.stringify([{ ...economyCategory, schemaVersion: 2, status, showInSuggestions: false, sortOrder: 0 }]),
+				"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 20, price: 220000, available: true }]),
+			}));
+			const category = runtime.categories.find((item) => item.id === "economy-bulbs");
+			expect(category.status).toBe(status);
+			expect(category.data.items[0]).toEqual({ watt: 20, priceToman: 220000, available: true });
+		}
 	});
 
 	it("skips malformed category records without failing runtime knowledge", async () => {
@@ -78,7 +108,7 @@ describe("runtime knowledge", () => {
 
 		expect(runtime).toEqual({
 			available: true,
-			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000 }] } }],
+			categories: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", data: { items: [{ watt: 9, priceToman: 160000, available: true }] } }],
 		});
 	});
 
@@ -99,8 +129,10 @@ describe("runtime knowledge", () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ message: "ok" });
 		const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
-		expect(prompt).toContain('"available":true');
 		expect(prompt).toContain('"priceToman":160000');
+		expect(prompt).toContain('"available":true');
+		expect(prompt).toContain("takes precedence over item availability");
+		expect(prompt).toContain("current purchasable price");
 		expect(prompt).toContain('"status":"available"');
 		expect(prompt).not.toContain('"boxedPrice"');
 		expect(prompt).toContain("قانون قطعی محاسبات");
@@ -115,7 +147,7 @@ describe("runtime knowledge", () => {
 			"knowledge:projectors": JSON.stringify({
 				id: "projectors",
 				type: "price_list",
-				parsedData: { items: [{ watt: 50, price: 500000 }, { watt: 100, price: 1000000 }] },
+				parsedData: { items: [{ watt: 50, price: 500000, available: true }, { watt: 100, price: 1000000, available: false }] },
 			}),
 		});
 		env.AI = { run: vi.fn() };
@@ -137,10 +169,28 @@ describe("runtime knowledge", () => {
 				categoryId: "projectors",
 				title: expect.any(String),
 				status: "available",
-				rows: [{ watt: 50, priceToman: 500000 }, { watt: 100, priceToman: 1000000 }],
+				rows: [{ watt: 50, priceToman: 500000, available: true }, { watt: 100, priceToman: 1000000, available: false }],
 			},
 		});
 		expect(env.AI.run).not.toHaveBeenCalled();
+	});
+
+	it("keeps category status precedence in structured price tables", async () => {
+		const economyCategory = KNOWLEDGE_CATEGORIES.find((category) => category.id === "economy-bulbs");
+		for (const status of ["out_of_stock", "not_sold"]) {
+			const env = createRuntimeEnv({
+				"knowledge:categories": JSON.stringify([{ ...economyCategory, schemaVersion: 2, status, showInSuggestions: false, sortOrder: 0 }]),
+				"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 20, price: 220000, available: true }]),
+			});
+			const response = await worker.fetch(new Request("http://example.com/chat", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message: "prices", presentationRequest: { type: "price_table", categoryId: "economy-bulbs" } }),
+			}), env);
+			const presentation = (await response.json()).presentation;
+			expect(presentation.status).toBe(status);
+			expect(presentation.rows).toEqual(status === "not_sold" ? [] : [{ watt: 20, priceToman: 220000, available: true }]);
+		}
 	});
 
 	it("keeps ordinary chat responses on the existing text path", async () => {

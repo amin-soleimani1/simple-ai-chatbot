@@ -421,7 +421,7 @@ describe("worker routes", () => {
 		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
 		const runtime = await getRuntimeKnowledge(env);
-		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toEqual([{ watt: 20, priceToman: 242000 }, { watt: 30, priceToman: 385000 }, { watt: 50, priceToman: 528000 }]);
+		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toEqual([{ watt: 20, priceToman: 242000, available: true }, { watt: 30, priceToman: 385000, available: true }, { watt: 50, priceToman: 528000, available: true }]);
 	});
 
 	it("applies batch decreases with Math.round semantics", async () => {
@@ -471,7 +471,7 @@ describe("worker routes", () => {
 		expect(record.updatedAt).not.toBe("2000-01-01T00:00:00.000Z");
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
 		const runtime = await getRuntimeKnowledge(env);
-		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toContainEqual({ watt: 40, priceToman: 420000 });
+		expect(runtime.categories.find((category) => category.id === "economy-bulbs").data.items).toContainEqual({ watt: 40, priceToman: 420000, available: true });
 	});
 
 	it("rejects invalid or duplicate added price items without writing", async () => {

@@ -301,7 +301,7 @@ function runtimeCategoryData(category, record) {
 			const normalizedItem = normalizePriceListItem(item);
 			if (!normalizedItem || seenWatts.has(normalizedItem.watt)) return null;
 			seenWatts.add(normalizedItem.watt);
-			items.push({ watt: normalizedItem.watt, priceToman: normalizedItem.price });
+			items.push({ watt: normalizedItem.watt, priceToman: normalizedItem.price, available: normalizedItem.available });
 		}
 		return { id: category.id, title: category.title, type: category.type, status: category.status ?? "available", data: { items } };
 	}

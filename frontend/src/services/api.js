@@ -33,7 +33,7 @@ export async function sendMessage(message, history, presentationRequest) {
     || typeof data.presentation.title !== "string"
 	|| (data.presentation.status !== undefined && !["available", "out_of_stock", "not_sold"].includes(data.presentation.status))
     || !Array.isArray(data.presentation.rows)
-    || data.presentation.rows.some((row) => !Number.isSafeInteger(row?.watt) || row.watt <= 0 || !Number.isSafeInteger(row?.priceToman) || row.priceToman <= 0)
+    || data.presentation.rows.some((row) => !Number.isSafeInteger(row?.watt) || row.watt <= 0 || !Number.isSafeInteger(row?.priceToman) || row.priceToman <= 0 || (row.available !== undefined && typeof row.available !== "boolean"))
   ) throw new Error("Worker presentation response is invalid");
 
   return { message: data.message, presentation: data.presentation };
