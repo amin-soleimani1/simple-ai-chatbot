@@ -202,17 +202,36 @@ describe("worker routes", () => {
 			{ id: "projectors", title: expect.any(String), type: "price_list", status: "out_of_stock", sortOrder: 10 },
 			{ id: "led-strips", title: "LED strips", type: "text", status: "available", sortOrder: 15 },
 			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 },
+			{ id: "iranian-bulbs-warranty", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 },
+			{ id: "repairs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 40 },
 		] });
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
-	it("returns an empty suggestions list for a legacy or disabled registry without writing", async () => {
+	it("returns all built-in suggestion defaults without a registry or KV writes", async () => {
+		const env = createKnowledgeEnv();
+		const response = await worker.fetch(request("/suggestions"), env);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ suggestions: [
+			{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 10 },
+			{ id: "iranian-bulbs-warranty", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 },
+			{ id: "projectors", title: expect.any(String), type: "price_list", status: "available", sortOrder: 30 },
+			{ id: "repairs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 40 },
+			{ id: "chips", title: expect.any(String), type: "text", status: "available", sortOrder: 50 },
+			{ id: "ceiling-panels", title: expect.any(String), type: "per_watt_price", status: "available", sortOrder: 60 },
+		] });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("keeps legacy dynamic registry categories hidden without disabling built-in suggestions", async () => {
 		const env = createKnowledgeEnv({
 			"knowledge:categories": JSON.stringify([{ id: "legacy-text", title: "Legacy text", type: "text" }]),
 		});
 		const response = await worker.fetch(request("/suggestions"), env);
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ suggestions: [] });
+		expect((await response.json()).suggestions.map((suggestion) => suggestion.id)).toEqual([
+			"economy-bulbs", "iranian-bulbs-warranty", "projectors", "repairs", "chips", "ceiling-panels",
+		]);
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
@@ -224,19 +243,28 @@ describe("worker routes", () => {
 		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
-	it("patches suggestion metadata atomically and exposes the enabled category through suggestions", async () => {
+	it("lets Admin overrides hide, re-enable, and reorder built-in suggestions without changing knowledge", async () => {
 		const knowledgeRecord = JSON.stringify({ rawText: "private", parsedData: { items: [{ watt: 20, price: 220000 }] } });
 		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": knowledgeRecord });
-		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/categories/economy-bulbs", {
-			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ showInSuggestions: true, sortOrder: 20 }),
+		const hidden = await authenticatedKnowledgeRequest("/admin/knowledge/categories/chips", {
+			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ showInSuggestions: false, sortOrder: 5 }),
 		}, env);
-		expect(response.status).toBe(200);
-		const { category } = await response.json();
-		expect(category).toMatchObject({ id: "economy-bulbs", type: "price_list", status: "available", schemaVersion: 2, showInSuggestions: true, sortOrder: 20 });
+		expect(hidden.response.status).toBe(200);
+		expect((await hidden.response.json()).category).toMatchObject({ id: "chips", type: "text", status: "available", schemaVersion: 2, showInSuggestions: false, sortOrder: 5 });
 		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
 		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledgeRecord);
+		const hiddenSuggestions = await worker.fetch(request("/suggestions"), env);
+		expect((await hiddenSuggestions.json()).suggestions.map((suggestion) => suggestion.id)).not.toContain("chips");
+
+		const enabled = await authenticatedKnowledgeRequest("/admin/knowledge/categories/chips", {
+			method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ showInSuggestions: true, sortOrder: 5 }),
+		}, env);
+		expect(enabled.response.status).toBe(200);
+		expect((await enabled.response.json()).category).toMatchObject({ id: "chips", status: "available", showInSuggestions: true, sortOrder: 5 });
 		const suggestions = await worker.fetch(request("/suggestions"), env);
-		expect(await suggestions.json()).toEqual({ suggestions: [{ id: "economy-bulbs", title: expect.any(String), type: "price_list", status: "available", sortOrder: 20 }] });
+		expect((await suggestions.json()).suggestions.map((suggestion) => suggestion.id)).toEqual([
+			"chips", "economy-bulbs", "iranian-bulbs-warranty", "projectors", "repairs", "ceiling-panels",
+		]);
 	});
 
 	it("rejects invalid or empty category metadata patches without writing", async () => {
@@ -678,7 +706,10 @@ describe("worker routes", () => {
 
 	it("resolves default categories when the registry is absent", async () => {
 		const category = await resolveKnowledgeCategory(createKnowledgeEnv(), "chips");
-		expect(category).toMatchObject({ id: "chips", type: "text" });
+		expect(category).toEqual({
+			id: "chips", title: "چیپ", type: "text",
+			status: "available", showInSuggestions: true, sortOrder: 50,
+		});
 	});
 
 	it("resolves a dynamic category from the KV registry", async () => {

@@ -21,6 +21,14 @@ const LEGACY_CATEGORY_METADATA = Object.freeze({
 	showInSuggestions: false,
 	sortOrder: 0,
 });
+const BUILT_IN_SUGGESTION_DEFAULTS = Object.freeze({
+	"economy-bulbs": { showInSuggestions: true, sortOrder: 10 },
+	"iranian-bulbs-warranty": { showInSuggestions: true, sortOrder: 20 },
+	projectors: { showInSuggestions: true, sortOrder: 30 },
+	repairs: { showInSuggestions: true, sortOrder: 40 },
+	chips: { showInSuggestions: true, sortOrder: 50 },
+	"ceiling-panels": { showInSuggestions: true, sortOrder: 60 },
+});
 const DIGIT_MAP = Object.freeze({
 	"۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
 	"٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
@@ -53,7 +61,11 @@ export function normalizeCategory(category) {
 	if (!SUPPORTED_CATEGORY_TYPES.has(category.type)) throw new Error(`Knowledge category type is invalid: ${category.type}`);
 
 	const normalized = { id: category.id, title, type: category.type };
-	if (!hasV2Metadata(category)) return { ...normalized, ...LEGACY_CATEGORY_METADATA };
+	if (!hasV2Metadata(category)) return {
+		...normalized,
+		...LEGACY_CATEGORY_METADATA,
+		...(BUILT_IN_SUGGESTION_DEFAULTS[category.id] ?? {}),
+	};
 	if (category.schemaVersion !== CATEGORY_SCHEMA_VERSION) throw new Error(`Knowledge category schemaVersion must be ${CATEGORY_SCHEMA_VERSION}.`);
 	if (!CATEGORY_STATUSES.has(category.status)) throw new Error(`Knowledge category status is invalid: ${category.status}`);
 	if (typeof category.showInSuggestions !== "boolean") throw new Error("Knowledge category showInSuggestions must be a boolean.");
