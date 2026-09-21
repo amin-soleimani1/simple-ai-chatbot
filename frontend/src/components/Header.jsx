@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import RobotAvatar from "./RobotAvatar";
 import StoreDrawer from "./StoreDrawer";
 
-export default function Header({ onAdminClick }) {
+export default function Header({ onAdminClick, robotState, isSending }) {
   const [isDrawerMounted, setIsDrawerMounted] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -38,17 +38,19 @@ export default function Header({ onAdminClick }) {
     closeDrawer();
     onAdminClick();
   }
+  const isSleeping = robotState === "sleeping";
+  const statusText = isSleeping ? "آخرین بازدید به تازگی" : robotState === "waking" || !isSending ? "آنلاین" : "در حال نوشتن ...";
 
   return (
     <>
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#d9ad4a]/20 bg-[linear-gradient(135deg,#0e0a0d_0%,#0a080a_65%,#100a0d_100%)] px-3 sm:h-[60px] sm:px-6">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3" dir="rtl">
-          <RobotAvatar />
+          <RobotAvatar state={robotState} />
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold tracking-tight text-zinc-100">دستیار هوشمند کیان</p>
             <p className="mt-1 flex items-center gap-1 whitespace-nowrap text-[10px] text-zinc-400">
-              <span className="robot-status-dot" aria-hidden="true" />
-              آخرین بازدید به تازگی
+              <span className={`robot-status-dot${isSleeping ? "" : " robot-status-dot--online"}`} aria-hidden="true" />
+              {statusText}
             </p>
           </div>
         </div>

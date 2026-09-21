@@ -15,6 +15,9 @@ function ChatbotApp() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const isSendingRef = useRef(false);
+  const [robotState, setRobotState] = useState("sleeping");
+  const hasRobotWokenRef = useRef(false);
+  const robotWakeTimerRef = useRef(null);
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
 
@@ -24,12 +27,20 @@ function ChatbotApp() {
     return () => window.clearTimeout(timeoutId);
   }, [showAccessDenied]);
 
+  useEffect(() => () => window.clearTimeout(robotWakeTimerRef.current), []);
+
   async function handleSend(input) {
     const content = typeof input === "string" ? input : input?.content;
     const presentationRequest = typeof input === "string" ? undefined : input?.presentationRequest;
     const text = typeof content === "string" ? content.trim() : "";
 
     if (!text || isSendingRef.current) return;
+
+    if (!hasRobotWokenRef.current) {
+      hasRobotWokenRef.current = true;
+      setRobotState("waking");
+      robotWakeTimerRef.current = window.setTimeout(() => setRobotState("awake"), 600);
+    }
 
     const history = messages
       .filter((message) => message.role === "user" || message.role === "assistant")
@@ -61,7 +72,7 @@ function ChatbotApp() {
     return authenticated;
   }
 
-  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} /><ChatWindow messages={messages} onSuggestionClick={handleSend} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
+  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
 }
 
 function App() {

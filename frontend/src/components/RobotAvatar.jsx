@@ -1,10 +1,16 @@
-export default function RobotAvatar() {
+const robotLabels = {
+  sleeping: "ربات در حال استراحت",
+  waking: "ربات در حال بیدار شدن",
+  awake: "ربات آنلاین",
+};
+
+export default function RobotAvatar({ state = "sleeping" }) {
   return (
     <svg
       viewBox="0 0 64 64"
       role="img"
-      aria-label="ربات در حال استراحت"
-      className="robot-avatar"
+      aria-label={robotLabels[state] ?? robotLabels.sleeping}
+      className={`robot-avatar robot-avatar--${state}`}
     >
       <circle cx="32" cy="32" r="30" className="robot-avatar__backdrop" />
       <circle cx="32" cy="32" r="30.25" className="robot-avatar__outer-halo" />
@@ -16,6 +22,8 @@ export default function RobotAvatar() {
         <rect x="17" y="25" width="30" height="14" rx="6" className="robot-avatar__visor" />
         <g className="robot-avatar__left-eye"><path d="M22.5 32h5.5" /></g>
         <g className="robot-avatar__right-eye"><path d="M36 32h5.5" /></g>
+        <g className="robot-avatar__left-awake-eye"><rect x="22.5" y="29.8" width="5.5" height="4.5" rx="2.1" /></g>
+        <g className="robot-avatar__right-awake-eye"><rect x="36" y="29.8" width="5.5" height="4.5" rx="2.1" /></g>
       </g>
     </svg>
   );
