@@ -41,6 +41,18 @@ function createKnowledgeEnv(initialValues = {}) {
 	};
 }
 
+function marketReference(overrides = {}) {
+	return {
+		schemaVersion: 1,
+		categoryId: "economy-bulbs",
+		title: "لامپ اقتصادی",
+		updatedAt: "2026-09-22T00:00:00.000Z",
+		research: { sampleCount: 5, method: "manual_market_research" },
+		items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }],
+		...overrides,
+	};
+}
+
 async function authenticatedKnowledgeRequest(path, options = {}, env = createKnowledgeEnv()) {
 	const cookie = await createSessionCookie();
 	return {
@@ -177,6 +189,77 @@ describe("worker routes", () => {
 		}), authEnv);
 		expect(response.status).toBe(403);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+	});
+
+	it("requires the existing Admin session for Market Reference GET and PUT", async () => {
+		const env = createKnowledgeEnv();
+		for (const options of [
+			{},
+			{ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(marketReference()) },
+		]) {
+			const response = await worker.fetch(request("/admin/market-reference/economy-bulbs", options), env);
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ authenticated: false });
+		}
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("reads an existing Market Reference with derived freshness and no writes", async () => {
+		const updatedAt = new Date().toISOString();
+		const stored = marketReference({ updatedAt });
+		const env = createKnowledgeEnv({ "market-reference:economy-bulbs": JSON.stringify(stored) });
+		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {}, env);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ marketReference: { ...stored, freshness: "current" } });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("returns controlled not-found and storage-safe responses for missing Market References", async () => {
+		const env = createKnowledgeEnv();
+		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {}, env);
+		expect(response.status).toBe(404);
+		expect(await response.json()).toEqual({ error: "Market Reference not found." });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("creates and fully replaces Market References while preserving submitted updatedAt and Official Store Knowledge", async () => {
+		const knowledgeRecord = JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } });
+		const categoryRegistry = JSON.stringify([{ id: "economy-bulbs", title: "لامپ اقتصادی", type: "price_list" }]);
+		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": knowledgeRecord, "knowledge:categories": categoryRegistry });
+		const created = marketReference();
+		const first = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
+			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(created),
+		}, env);
+		expect(first.response.status).toBe(200);
+		expect((await first.response.json()).marketReference).toEqual(created);
+
+		const replacement = marketReference({ updatedAt: "2026-09-23T12:34:56.000Z", items: [{ watt: 12, minPrice: 180000, maxPrice: 220000, referencePrice: 200000 }] });
+		const second = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
+			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(replacement),
+		}, env);
+		expect(second.response.status).toBe(200);
+		expect((await second.response.json()).marketReference).toEqual(replacement);
+		expect(env._values.get("market-reference:economy-bulbs")).toBe(JSON.stringify(replacement));
+		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledgeRecord);
+		expect(env._values.get("knowledge:categories")).toBe(categoryRegistry);
+		expect(env.APP_CONFIG.put.mock.calls.map(([key]) => key)).toEqual(["market-reference:economy-bulbs", "market-reference:economy-bulbs"]);
+	});
+
+	it("rejects Market Reference URL/body mismatches and service validation errors without writing", async () => {
+		const invalidBodies = [
+			marketReference({ categoryId: "projectors" }),
+			marketReference({ schemaVersion: 2 }),
+			marketReference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 110000 }] }),
+			marketReference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }, { watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
+		];
+		for (const body of invalidBodies) {
+			const env = createKnowledgeEnv();
+			const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
+				method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+			}, env);
+			expect(response.status).toBe(400);
+			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		}
 	});
 
 	it("returns enabled suggestion metadata in deterministic order without authentication or KV writes", async () => {

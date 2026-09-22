@@ -1,6 +1,6 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
 import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
-import { getMarketReference } from "./marketReference/marketReferenceService.js";
+import { getMarketReference, MarketReferenceValidationError, saveMarketReference } from "./marketReference/marketReferenceService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -216,6 +216,34 @@ async function handleKnowledge(request, env, pathname) {
 	return jsonResponse(result, result.valid ? 200 : 400, request);
 }
 
+async function handleMarketReference(request, env, pathname) {
+	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
+	const parts = pathname.split("/").filter(Boolean);
+	const categoryId = parts[2];
+	if (!categoryId || parts.length !== 3) return jsonResponse({ error: "Market Reference not found." }, 404, request);
+
+	if (request.method === "GET") {
+		try {
+			const marketReference = await getMarketReference(env, categoryId);
+			if (!marketReference) return jsonResponse({ error: "Market Reference not found." }, 404, request);
+			return jsonResponse({ marketReference }, 200, request);
+		} catch {
+			return jsonResponse({ error: "Unable to access Market Reference storage." }, 500, request);
+		}
+	}
+
+	if (request.method !== "PUT") return jsonResponse({ error: "Method not allowed." }, 405, request);
+	const body = await requestBody(request);
+	if (!body) return jsonResponse({ error: "Market Reference request body is invalid." }, 400, request);
+	if (body.categoryId !== categoryId) return jsonResponse({ error: "Market Reference categoryId must match the URL." }, 400, request);
+	try {
+		return jsonResponse({ marketReference: await saveMarketReference(env, body) }, 200, request);
+	} catch (error) {
+		if (error instanceof MarketReferenceValidationError) return jsonResponse({ error: error.message }, 400, request);
+		return jsonResponse({ error: "Unable to save Market Reference." }, 500, request);
+	}
+}
+
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
@@ -255,6 +283,10 @@ export default {
 			} catch {
 				return jsonResponse({ error: "Unable to access knowledge storage." }, 500, request);
 			}
+		}
+
+		if (pathname === "/admin/market-reference" || pathname.startsWith("/admin/market-reference/")) {
+			return handleMarketReference(request, env, pathname);
 		}
 
 		if (pathname !== "/chat") {
