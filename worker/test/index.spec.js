@@ -636,6 +636,42 @@ describe("worker routes", () => {
 		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("knowledge:economy-bulbs", expect.any(String));
 	});
 
+	it("previews and replaces knowledge using the selected existing category type", async () => {
+		const env = createKnowledgeEnv();
+		const previewRequest = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/preview", {
+			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText: "هر وات ۹۰۰۰ تومان", type: "per_watt_price" }),
+		}, env);
+		expect(previewRequest.response.status).toBe(200);
+		expect((await previewRequest.response.json()).parsedData).toEqual({ pricePerWatt: 9000 });
+
+		const saveRequest = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs", {
+			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText: "هر وات ۹۰۰۰ تومان", type: "per_watt_price" }),
+		}, env);
+		expect(saveRequest.response.status).toBe(200);
+		expect((await saveRequest.response.json()).category).toMatchObject({ id: "economy-bulbs", type: "per_watt_price" });
+		expect(JSON.parse(env.APP_CONFIG.put.mock.calls.at(-1)[1])).toMatchObject({ type: "per_watt_price", parsedData: { pricePerWatt: 9000 } });
+		expect(JSON.parse(env.APP_CONFIG.put.mock.calls[0][1])).toEqual(expect.arrayContaining([expect.objectContaining({ id: "economy-bulbs", type: "per_watt_price" })]));
+	});
+
+	it("keeps category metadata and content unchanged when replacement type validation fails", async () => {
+		const env = createKnowledgeEnv();
+		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs", {
+			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText: "۲۰ وات ۲۲۰", type: "per_watt_price" }),
+		}, env);
+		expect(response.status).toBe(400);
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("supports each existing category information type during replacement preview", async () => {
+		const env = createKnowledgeEnv();
+		for (const [type, rawText] of [["price_list", "۲۰ وات ۲۲۰"], ["per_watt_price", "هر وات ۹۰۰۰ تومان"], ["text", "اطلاعات متنی دسته"]]) {
+			const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/chips/preview", {
+				method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText, type }),
+			}, env);
+			expect(response.status).toBe(200);
+		}
+	});
+
 	it("does not write an unchanged semantic price list", async () => {
 		const env = createKnowledgeEnv({
 			"knowledge:economy-bulbs": JSON.stringify({ id: "economy-bulbs", parsedData: { items: [{ watt: 9, price: 160000 }] } }),

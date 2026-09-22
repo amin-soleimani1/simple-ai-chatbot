@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Bot, BrainCircuit, ChevronLeft, LogOut, Menu, Palette, PanelTop,
+  Bot, BrainCircuit, ChevronLeft, LogOut, Menu, Palette, PanelTop, ShieldCheck,
   Store, Tags, X,
 } from "lucide-react";
 import { adminSections, getAdminPath, navigateTo } from "./adminRoutes";
@@ -130,10 +130,10 @@ export default function AdminPanel({ onLogout }) {
     setDrawerOpen(false);
   }
 
-  function handleKnowledgeSaved(record) {
+  function handleKnowledgeSaved(record, category) {
     setKnowledgeDetail((current) => (
       current.id === record.id
-        ? { ...current, category: record, knowledge: record }
+        ? { ...current, category: category ?? current.category, knowledge: record }
         : current
     ));
   }
@@ -145,7 +145,7 @@ export default function AdminPanel({ onLogout }) {
   return (
     <main className="admin-shell" dir="rtl">
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span className="admin-brand__symbol">ک</span><span>پنل مدیریت</span></div>
+        <div className="admin-brand"><span className="admin-brand__symbol"><ShieldCheck size={19} aria-hidden="true" /></span><span>پنل مدیریت</span></div>
         <AdminNav activePath={section.path} onNavigate={handleNavigate} />
       </aside>
       <div className="admin-main">
@@ -158,7 +158,7 @@ export default function AdminPanel({ onLogout }) {
       </div>
       {drawerOpen && <div className="admin-drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`admin-drawer ${drawerOpen ? "is-open" : ""}`} aria-hidden={!drawerOpen}>
-        <div className="admin-drawer__header"><div className="admin-brand"><span className="admin-brand__symbol">ک</span><span>پنل مدیریت</span></div><button className="admin-icon-button" type="button" onClick={() => setDrawerOpen(false)} aria-label="بستن منو"><X size={22} /></button></div>
+        <div className="admin-drawer__header"><div className="admin-brand"><span className="admin-brand__symbol"><ShieldCheck size={19} aria-hidden="true" /></span><span>پنل مدیریت</span></div><button className="admin-icon-button" type="button" onClick={() => setDrawerOpen(false)} aria-label="بستن منو"><X size={22} /></button></div>
         <AdminNav activePath={section.path} onNavigate={handleNavigate} />
       </aside>
     </main>

@@ -1,5 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
-import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
+import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, replaceKnowledge, resolveKnowledgeCategory, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
 import { getMarketReference, MarketReferenceValidationError, saveMarketReference } from "./marketReference/marketReferenceService.js";
 import { getMarketReferenceCatalog, seedDefaultMarketReferenceCatalog } from "./marketReference/marketReferenceCatalogService.js";
 import { initializeMarketReferenceBootstrap } from "./marketReference/marketReferenceBootstrapInitializationService.js";
@@ -207,14 +207,15 @@ async function handleKnowledge(request, env, pathname) {
 		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
 		const body = await requestBody(request);
 		if (!body || typeof body.rawText !== "string") return jsonResponse({ valid: false, changed: false, parsedData: null, changes: [], errors: [{ line: 1, message: "متن ورودی معتبر نیست." }] }, 400, request);
-		const preview = await previewKnowledge(env, category, body.rawText);
+		const previewCategory = typeof body.type === "string" ? { ...category, type: body.type } : category;
+		const preview = await previewKnowledge(env, previewCategory, body.rawText);
 		return jsonResponse(preview, preview.valid ? 200 : 400, request);
 	}
 	if (request.method === "GET") return jsonResponse({ category, knowledge: await getKnowledgeRecord(env, category) }, 200, request);
 	if (request.method !== "PUT") return jsonResponse({ error: "Method not allowed." }, 405, request);
 	const body = await requestBody(request);
 	if (!body || typeof body.rawText !== "string") return jsonResponse({ valid: false, changed: false, parsedData: null, changes: [], errors: [{ line: 1, message: "متن ورودی معتبر نیست." }] }, 400, request);
-	const result = await saveKnowledge(env, category, body.rawText);
+	const result = await replaceKnowledge(env, category, body.rawText, body.type ?? category.type);
 	return jsonResponse(result, result.valid ? 200 : 400, request);
 }
 

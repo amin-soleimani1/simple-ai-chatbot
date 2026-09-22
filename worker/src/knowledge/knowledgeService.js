@@ -97,7 +97,7 @@ async function getDynamicKnowledgeCategoryRegistry(env) {
 	const categoryIds = new Set();
 	const categories = storedIndex.map((category) => {
 		const defaultCategory = KNOWLEDGE_CATEGORIES.find((item) => item.id === category.id);
-		if (defaultCategory && (category.title !== defaultCategory.title || category.type !== defaultCategory.type)) throw new Error(`Knowledge category ID conflicts with a default category: ${category.id}`);
+		if (defaultCategory && category.title !== defaultCategory.title) throw new Error(`Knowledge category ID conflicts with a default category: ${category.id}`);
 		const validated = defaultCategory ? normalizeCategory(category) : validateDynamicCategory(category, categoryIds);
 		categoryIds.add(validated.id);
 		return validated;
@@ -244,6 +244,7 @@ function parsePerWattPrice(rawText) {
 export function parseKnowledge(category, rawText) {
 	const rawError = validateRawText(rawText);
 	if (rawError) return { valid: false, parsedData: null, errors: [{ line: 1, message: rawError }] };
+	if (!SUPPORTED_CATEGORY_TYPES.has(category?.type)) return { valid: false, parsedData: null, errors: [{ line: 1, message: "نوع اطلاعات دسته معتبر نیست." }] };
 	if (category.type === "price_list") return parsePriceList(category, rawText);
 	if (category.type === "per_watt_price") return parsePerWattPrice(rawText);
 	return { valid: true, parsedData: { text: rawText.trim() }, errors: [] };
@@ -382,6 +383,28 @@ export async function saveKnowledge(env, category, rawText) {
 	const record = { id: category.id, title: category.title, type: category.type, rawText, parsedData: preview.parsedData, updatedAt: new Date().toISOString() };
 	await putJson(env, knowledgeCategoryKey(category.id), record);
 	return { ...preview, saved: true, record };
+}
+
+export async function replaceKnowledge(env, category, rawText, type = category.type) {
+	if (!SUPPORTED_CATEGORY_TYPES.has(type)) return { valid: false, changed: false, parsedData: null, changes: [], errors: [{ line: 1, message: "نوع اطلاعات دسته معتبر نیست." }] };
+	const nextCategory = type === category.type ? category : { ...category, type };
+	const preview = await previewKnowledge(env, nextCategory, rawText);
+	if (!preview.valid) return { ...preview, saved: false, category: nextCategory };
+	const typeChanged = nextCategory.type !== category.type;
+	if (!preview.changed && !typeChanged) return { ...preview, saved: false, category: nextCategory };
+
+	if (typeChanged) {
+		const { storedCategories } = await getDynamicKnowledgeCategoryRegistry(env);
+		const storedCategory = { ...nextCategory, schemaVersion: CATEGORY_SCHEMA_VERSION };
+		const index = storedCategories.findIndex((item) => item.id === category.id);
+		await putJson(env, STORAGE_KEYS.KNOWLEDGE_CATEGORIES, index < 0
+			? [...storedCategories, storedCategory]
+			: storedCategories.map((item, itemIndex) => itemIndex === index ? storedCategory : item));
+	}
+
+	const record = { id: nextCategory.id, title: nextCategory.title, type: nextCategory.type, rawText, parsedData: preview.parsedData, updatedAt: new Date().toISOString() };
+	await putJson(env, knowledgeCategoryKey(nextCategory.id), record);
+	return { ...preview, changed: true, saved: true, record, category: nextCategory };
 }
 
 export function normalizePriceListItem(item) {

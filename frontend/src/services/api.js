@@ -143,11 +143,11 @@ export async function getKnowledgeCategoryDetail(categoryId) {
   return data;
 }
 
-export async function previewKnowledgeCategory(categoryId, rawText) {
+export async function previewKnowledgeCategory(categoryId, rawText, type) {
   const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rawText }),
+    body: JSON.stringify(type ? { rawText, type } : { rawText }),
   });
   let data = null;
   try { data = await response.json(); } catch { /* A safe UI error is shown below. */ }
@@ -160,11 +160,11 @@ export async function previewKnowledgeCategory(categoryId, rawText) {
   return data;
 }
 
-export async function saveKnowledgeCategory(categoryId, rawText) {
+export async function saveKnowledgeCategory(categoryId, rawText, type) {
   const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rawText }),
+    body: JSON.stringify(type ? { rawText, type } : { rawText }),
   });
   let data = null;
   try { data = await response.json(); } catch { /* A safe UI error is shown below. */ }

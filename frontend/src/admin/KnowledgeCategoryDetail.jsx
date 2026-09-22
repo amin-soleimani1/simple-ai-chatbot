@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CircleAlert, LoaderCircle, MoreVertical } from "lucide-react";
 import { addKnowledgePriceItem, deleteKnowledgePriceItem, previewKnowledgeCategory, saveKnowledgeCategory, updateKnowledgeCategoryMetadata, updateKnowledgeCategoryStatus, updateKnowledgePrice, updateKnowledgePriceAvailability, updateKnowledgePricesByPercentage } from "../services/api";
 import KnowledgePreviewResult from "./KnowledgePreviewResult";
 
@@ -70,6 +70,8 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const [deleting, setDeleting] = useState(false);
   const [availabilitySavingWatts, setAvailabilitySavingWatts] = useState(() => new Set());
   const [availabilityErrors, setAvailabilityErrors] = useState({});
+  const [openMenuWatt, setOpenMenuWatt] = useState(null);
+  const menuRef = useRef(null);
   const editingItem = items.find((item) => item.watt === editingWatt);
   const manualPrice = parseManualPrice(value);
   const percentage = parsePercentage(percentageValue);
@@ -83,6 +85,17 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   const addPrice = parseManualPrice(addPriceValue);
   const addValidationError = addWatt === null || addPrice === null ? "توان و مبلغ نهایی معتبر وارد کنید." : "";
   const deletingItem = items.find((item) => item.watt === deletingWatt);
+  useEffect(() => {
+    function closeMenu(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setOpenMenuWatt(null);
+    }
+    function closeOnEscape(event) {
+      if (event.key === "Escape") setOpenMenuWatt(null);
+    }
+    document.addEventListener("mousedown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("mousedown", closeMenu); document.removeEventListener("keydown", closeOnEscape); };
+  }, []);
   function closeEditor() {
     setEditingWatt(null); setValue(""); setPercentageValue(""); setError("");
   }
@@ -92,7 +105,7 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
   async function save() {
     if (!editingItem || nextPrice === null || saving) { setError(validationError || "قیمت معتبر وارد کنید."); return; }
     setSaving(true); setError("");
-    try { onPriceSaved(await updateKnowledgePrice(category.id, editingItem.watt, nextPrice)); closeEditor(); }
+    try { onPriceSaved(await updateKnowledgePrice(category.id, editingItem.watt, nextPrice)); closeEditor(); setOpenMenuWatt(null); }
     catch { setError("ذخیره قیمت انجام نشد. دوباره تلاش کنید."); }
     finally { setSaving(false); }
   }
@@ -130,7 +143,7 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
     setDeleting(true); setDeleteError("");
     try {
       onPriceSaved(await deleteKnowledgePriceItem(category.id, deletingItem.watt));
-      setDeletingWatt(null);
+      setDeletingWatt(null); setOpenMenuWatt(null);
     } catch { setDeleteError("حذف محصول انجام نشد. دوباره تلاش کنید."); }
     finally { setDeleting(false); }
   }
@@ -139,7 +152,7 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
     const available = item.available !== false;
     setAvailabilitySavingWatts((current) => new Set(current).add(item.watt));
     setAvailabilityErrors((current) => ({ ...current, [item.watt]: "" }));
-    try { onPriceSaved(await updateKnowledgePriceAvailability(category.id, item.watt, !available)); }
+    try { onPriceSaved(await updateKnowledgePriceAvailability(category.id, item.watt, !available)); setOpenMenuWatt(null); }
     catch { setAvailabilityErrors((current) => ({ ...current, [item.watt]: "ذخیره وضعیت موجودی انجام نشد. دوباره تلاش کنید." })); }
     finally {
       setAvailabilitySavingWatts((current) => {
@@ -157,10 +170,11 @@ function StructuredPriceTable({ category, knowledge, items, onReplace, onPriceSa
     {addMode && <div className="knowledge-batch-edit"><h4>افزودن محصول</h4><label className="knowledge-price-edit__input"><span>توان (وات)</span><input value={addWattValue} onChange={(event) => { setAddWattValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="توان محصول جدید" /></label><label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={addPriceValue} onChange={(event) => { setAddPriceValue(event.target.value); setAddError(""); }} inputMode="numeric" aria-label="قیمت محصول جدید" /></label><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{!addValidationError ? <p>{new Intl.NumberFormat("fa-IR").format(addWatt)} وات<br />{formatAdminToman(addPrice)}</p> : <p>{addWattValue || addPriceValue ? addValidationError : "توان و مبلغ نهایی را وارد کنید."}</p>}</div>{addError && <p className="knowledge-form-error" role="alert">{addError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={addSaving} onClick={saveAdd}>{addSaving ? "در حال ذخیره..." : "تأیید و افزودن"}</button><button type="button" className="knowledge-secondary-button" disabled={addSaving} onClick={cancelAdd}>انصراف</button></div></div>}
     {deletingItem && <div className="knowledge-batch-edit knowledge-delete-confirm" role="alertdialog" aria-labelledby="delete-price-item-title"><h4 id="delete-price-item-title">حذف محصول</h4><div className="knowledge-batch-edit__preview"><p><strong>{new Intl.NumberFormat("fa-IR").format(deletingItem.watt)} وات</strong><br />{formatAdminToman(deletingItem.price)}<br />این محصول از لیست قیمت حذف خواهد شد.</p></div>{deleteError && <p className="knowledge-form-error" role="alert">{deleteError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={deleting} onClick={confirmDelete}>{deleting ? "در حال حذف..." : "تأیید حذف"}</button><button type="button" className="knowledge-secondary-button" disabled={deleting} onClick={cancelDelete}>انصراف</button></div></div>}
     {batchMode && <div className="knowledge-batch-edit"><h4>تغییر درصدی همه قیمت‌ها</h4><label className="knowledge-price-edit__input"><span>درصد</span><input value={batchPercentageValue} onChange={(event) => { setBatchPercentageValue(event.target.value); setBatchError(""); }} inputMode="decimal" aria-label="درصد تغییر همه قیمت‌ها" /></label><div role="group" aria-label="جهت تغییر همه قیمت‌ها"><label><input type="radio" name="batch-price-direction" checked={batchDirection === "increase"} onChange={() => { setBatchDirection("increase"); setBatchError(""); }} /> افزایش</label><label><input type="radio" name="batch-price-direction" checked={batchDirection === "decrease"} onChange={() => { setBatchDirection("decrease"); setBatchError(""); }} /> کاهش</label></div><div className="knowledge-batch-edit__preview" aria-live="polite"><h5>پیش‌نمایش</h5>{batchPercentage !== null && !batchValidationError ? <ul>{batchPreview.map(({ item, price }) => <li key={item.watt}><strong>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</strong><span>{formatAdminToman(item.price)} ← {formatAdminToman(price)}</span></li>)}</ul> : <p>{batchPercentageValue ? batchValidationError : "درصد و جهت تغییر را وارد کنید."}</p>}</div>{batchError && <p className="knowledge-form-error" role="alert">{batchError}</p>}<div className="knowledge-modal__actions"><button type="button" className="knowledge-primary-button" disabled={batchSaving} onClick={saveBatch}>{batchSaving ? "در حال ذخیره..." : "تأیید و ذخیره همه"}</button><button type="button" className="knowledge-secondary-button" disabled={batchSaving} onClick={cancelBatch}>انصراف</button></div></div>}
-    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td><span className={`knowledge-availability ${item.available === false ? "is-unavailable" : "is-available"}`}>{item.available === false ? "ناموجود" : "موجود"}</span></td><td>{editingWatt === item.watt ? <div className="knowledge-price-edit">
+    <div className="knowledge-price-table__scroll"><table><thead><tr><th>محصول</th><th>قیمت</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)} وات</td><td>{formatAdminToman(item.price)}</td><td><span className={`knowledge-availability ${item.available === false ? "is-unavailable" : "is-available"}`}>{item.available === false ? "ناموجود" : "موجود"}</span></td><td>{editingWatt === item.watt && <div className="knowledge-price-edit" role="dialog" aria-modal="true" aria-label={`ویرایش قیمت ${item.watt} وات`}>
+      <div className="knowledge-price-edit__heading"><strong>ویرایش قیمت {new Intl.NumberFormat("fa-IR").format(item.watt)} وات</strong><span>قیمت فعلی: {formatAdminToman(item.price)}</span></div>
       <fieldset className="knowledge-price-edit__methods"><legend>روش ویرایش</legend><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "manual"} onChange={() => { setEditMethod("manual"); setError(""); }} /> مبلغ نهایی تومان</label><label><input type="radio" name={`price-edit-method-${item.watt}`} checked={editMethod === "percentage"} onChange={() => { setEditMethod("percentage"); setError(""); }} /> تغییر درصدی</label></fieldset>
       {editMethod === "manual" ? <label className="knowledge-price-edit__input"><span>مبلغ نهایی (تومان)</span><input value={value} onChange={(event) => { setValue(event.target.value); setError(""); }} inputMode="numeric" aria-label={`قیمت جدید ${item.watt} وات`} /></label> : <div className="knowledge-price-edit__percentage"><label className="knowledge-price-edit__input"><span>درصد</span><input value={percentageValue} onChange={(event) => { setPercentageValue(event.target.value); setError(""); }} inputMode="decimal" aria-label={`درصد تغییر قیمت ${item.watt} وات`} /></label><div role="group" aria-label="جهت تغییر"><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "increase"} onChange={() => { setPercentageDirection("increase"); setError(""); }} /> افزایش</label><label><input type="radio" name={`price-edit-direction-${item.watt}`} checked={percentageDirection === "decrease"} onChange={() => { setPercentageDirection("decrease"); setError(""); }} /> کاهش</label></div></div>}
-      <p className="knowledge-price-edit__preview">{editMethod === "percentage" && percentage !== null ? `${percentageDirection === "increase" ? "افزایش" : "کاهش"} ${new Intl.NumberFormat("fa-IR").format(percentage)}٪: ` : ""}{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{(error || (editMethod === "percentage" && percentageValue && validationError)) && <span role="alert">{error || validationError}</span>}<button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>{saving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={cancel}>انصراف</button></div> : <div className="knowledge-price-row-actions"><button type="button" className="knowledge-secondary-button" disabled={availabilitySavingWatts.has(item.watt)} onClick={() => toggleAvailability(item)}>{availabilitySavingWatts.has(item.watt) ? "در حال ذخیره..." : item.available === false ? "موجود کردن" : "ناموجود کردن"}</button><button type="button" className="knowledge-secondary-button" onClick={() => { setEditingWatt(item.watt); setEditMethod("manual"); setValue(String(item.price)); setPercentageValue(""); setPercentageDirection("increase"); setError(""); }}>ویرایش</button><button type="button" className="knowledge-secondary-button knowledge-delete-button" onClick={() => { setDeletingWatt(item.watt); setDeleteError(""); }}>حذف</button>{availabilityErrors[item.watt] && <span className="knowledge-price-row-actions__error" role="alert">{availabilityErrors[item.watt]}</span>}</div>}</td></tr>)}</tbody></table></div>
+      <p className="knowledge-price-edit__preview">{editMethod === "percentage" && percentage !== null ? `${percentageDirection === "increase" ? "افزایش" : "کاهش"} ${new Intl.NumberFormat("fa-IR").format(percentage)}٪: ` : ""}{formatAdminToman(item.price)} ← {nextPrice ? formatAdminToman(nextPrice) : "—"}</p>{(error || (editMethod === "percentage" && percentageValue && validationError)) && <span role="alert">{error || validationError}</span>}<div className="knowledge-price-edit__actions"><button type="button" className="knowledge-secondary-button" disabled={saving} onClick={cancel}>انصراف</button><button type="button" className="knowledge-primary-button" disabled={saving} onClick={save}>{saving ? "در حال ذخیره..." : "ذخیره"}</button></div></div>}<div className="knowledge-price-row-actions"><div className="knowledge-row-menu" ref={openMenuWatt === item.watt ? menuRef : null}><button type="button" className="knowledge-row-menu__trigger" aria-label={`عملیات ${item.watt} وات`} aria-haspopup="menu" aria-expanded={openMenuWatt === item.watt} onClick={() => setOpenMenuWatt((current) => current === item.watt ? null : item.watt)}><MoreVertical size={18} aria-hidden="true" /></button>{openMenuWatt === item.watt && <div className="knowledge-row-menu__popup" role="menu"><button type="button" role="menuitem" disabled={availabilitySavingWatts.has(item.watt)} onClick={() => toggleAvailability(item)}>{item.available === false ? "موجود کردن" : "ناموجود کردن"}</button><button type="button" role="menuitem" onClick={() => { setEditingWatt(item.watt); setEditMethod("manual"); setValue(String(item.price)); setPercentageValue(""); setPercentageDirection("increase"); setError(""); setOpenMenuWatt(null); }}>ویرایش قیمت</button><button type="button" role="menuitem" className="knowledge-delete-button" onClick={() => { setDeletingWatt(item.watt); setDeleteError(""); setOpenMenuWatt(null); }}>حذف</button></div>}</div>{availabilityErrors[item.watt] && <span className="knowledge-price-row-actions__error" role="alert">{availabilityErrors[item.watt]}</span>}</div></td></tr>)}</tbody></table></div>
   </section>;
 }
 
@@ -199,11 +213,14 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
   const [preview, setPreview] = useState(null);
   const [previewInvalidated, setPreviewInvalidated] = useState(false);
   const [previewedRawText, setPreviewedRawText] = useState(null);
+  const [replacementType, setReplacementType] = useState(detail.category.type);
+  const [previewedReplacementType, setPreviewedReplacementType] = useState(null);
   const [saveState, setSaveState] = useState("idle");
   const [replaceMode, setReplaceMode] = useState(false);
   const priceItems = detail.category.type === "price_list" ? validPriceItems(detail.knowledge) : null;
   const showStructuredPriceTable = Boolean(priceItems) && !replaceMode;
-  const canSave = previewState === "valid" && preview?.valid && !previewInvalidated && previewedRawText === rawText && saveState !== "loading";
+  const previewCategory = { ...detail.category, type: replacementType };
+  const canSave = previewState === "valid" && preview?.valid && !previewInvalidated && previewedRawText === rawText && previewedReplacementType === replacementType && saveState !== "loading";
 
   async function saveStatus() {
     if (statusSaving || statusValue === savedStatus) return;
@@ -240,16 +257,27 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
     if (saveState !== "idle") setSaveState("idle");
   }
 
+  function handleReplacementTypeChange(event) {
+    setReplacementType(event.target.value);
+    setPreview(null);
+    setPreviewInvalidated(true);
+    setPreviewedRawText(null);
+    setPreviewedReplacementType(null);
+    if (previewState !== "idle") setPreviewState("idle");
+    if (saveState !== "idle") setSaveState("idle");
+  }
+
   async function handlePreview() {
     if (previewState === "loading") return;
     setPreviewState("loading");
     setPreviewInvalidated(false);
     setSaveState("idle");
     try {
-      const result = await previewKnowledgeCategory(detail.category.id, rawText);
+      const result = await previewKnowledgeCategory(detail.category.id, rawText, replacementType);
       setPreview(result);
       setPreviewState(result.valid ? "valid" : "invalid");
       setPreviewedRawText(result.valid ? rawText : null);
+      setPreviewedReplacementType(result.valid ? replacementType : null);
     } catch {
       setPreview(null);
       setPreviewState("error");
@@ -261,18 +289,18 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
     if (!canSave) return;
     setSaveState("loading");
     try {
-      const result = await saveKnowledgeCategory(detail.category.id, rawText);
+      const result = await saveKnowledgeCategory(detail.category.id, rawText, replacementType);
       if (!result.valid) {
         setPreview(result);
         setPreviewState("invalid");
-        setPreviewedRawText(null);
+        setPreviewedRawText(null); setPreviewedReplacementType(null);
         setSaveState("validation-error");
         return;
       }
       setPreviewInvalidated(false);
-      setPreviewedRawText(rawText);
+      setPreviewedRawText(rawText); setPreviewedReplacementType(replacementType);
       if (result.saved && result.record) {
-        onKnowledgeSaved(result.record);
+        onKnowledgeSaved(result.record, result.category);
         setRawText(result.record.rawText);
         setPreview(null);
         setPreviewState("saved");
@@ -295,18 +323,18 @@ function KnowledgeCategoryEditor({ detail, onKnowledgeSaved }) {
         <h2 id="knowledge-category-title">{detail.category.title}</h2>
         <p>اطلاعات این دسته را وارد کنید و پیش از ذخیره، نتیجه را بررسی کنید.</p>
       </div>
-      <section className="knowledge-batch-edit"><h4>وضعیت تجاری دسته</h4><select value={statusValue} onChange={(event) => { setStatusValue(event.target.value); setStatusConfirming(false); setStatusError(""); }} disabled={statusSaving}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{statusValue !== savedStatus && !statusConfirming && <button type="button" className="knowledge-secondary-button" onClick={() => setStatusConfirming(true)}>بررسی تغییر وضعیت</button>}{statusConfirming && <div className="knowledge-batch-edit__preview"><p>{detail.category.title}<br />{statusLabels[savedStatus]} ← {statusLabels[statusValue]}</p><button type="button" className="knowledge-primary-button" disabled={statusSaving} onClick={saveStatus}>{statusSaving ? "در حال ذخیره..." : "تأیید و ذخیره"}</button><button type="button" className="knowledge-secondary-button" disabled={statusSaving} onClick={() => { setStatusValue(savedStatus); setStatusConfirming(false); }}>انصراف</button></div>}{statusError && <p className="knowledge-form-error" role="alert">{statusError}</p>}</section>
-      <section className="knowledge-batch-edit"><h4>پیشنهادها</h4><label><input type="checkbox" checked={showInSuggestions} disabled={suggestionsSaving} onChange={(event) => { setShowInSuggestions(event.target.checked); setSuggestionsError(""); }} /> نمایش در پیشنهادها</label><label className="knowledge-price-edit__input"><span>ترتیب نمایش</span><input type="number" min="0" step="1" inputMode="numeric" value={sortOrderValue} disabled={suggestionsSaving} onChange={(event) => { setSortOrderValue(event.target.value); setSuggestionsError(""); }} /></label>{suggestionsValidationError && <p className="knowledge-form-error" role="alert">{suggestionsValidationError}</p>}{suggestionsError && <p className="knowledge-form-error" role="alert">{suggestionsError}</p>}<button type="button" className="knowledge-primary-button" disabled={suggestionsSaving || !suggestionsChanged || Boolean(suggestionsValidationError)} onClick={saveSuggestions}>{suggestionsSaving ? "در حال ذخیره..." : "ذخیره تنظیمات پیشنهادها"}</button></section>
+      <section className="knowledge-category-settings" aria-labelledby="knowledge-category-settings-title"><h3 id="knowledge-category-settings-title">تنظیمات دسته</h3><div className="knowledge-category-settings__row"><label><span>وضعیت تجاری</span><select value={statusValue} onChange={(event) => { setStatusValue(event.target.value); setStatusConfirming(false); setStatusError(""); }} disabled={statusSaving}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{statusValue !== savedStatus && !statusConfirming && <button type="button" className="knowledge-secondary-button" onClick={() => setStatusConfirming(true)}>بررسی تغییر</button>}{statusConfirming && <div className="knowledge-category-settings__confirmation"><span>{statusLabels[savedStatus]} ← {statusLabels[statusValue]}</span><button type="button" className="knowledge-primary-button" disabled={statusSaving} onClick={saveStatus}>{statusSaving ? "در حال ذخیره..." : "تأیید"}</button><button type="button" className="knowledge-secondary-button" disabled={statusSaving} onClick={() => { setStatusValue(savedStatus); setStatusConfirming(false); }}>انصراف</button></div>}{statusError && <p className="knowledge-form-error" role="alert">{statusError}</p>}</div><div className="knowledge-category-settings__row knowledge-category-settings__suggestions"><label className="knowledge-category-settings__switch"><input type="checkbox" checked={showInSuggestions} disabled={suggestionsSaving} onChange={(event) => { setShowInSuggestions(event.target.checked); setSuggestionsError(""); }} /><span>نمایش در پیشنهادها</span></label><label><span>ترتیب نمایش</span><input type="number" min="0" step="1" inputMode="numeric" value={sortOrderValue} disabled={suggestionsSaving} onChange={(event) => { setSortOrderValue(event.target.value); setSuggestionsError(""); }} /></label><button type="button" className="knowledge-primary-button" disabled={suggestionsSaving || !suggestionsChanged || Boolean(suggestionsValidationError)} onClick={saveSuggestions}>{suggestionsSaving ? "در حال ذخیره..." : "ذخیره"}</button>{suggestionsValidationError && <p className="knowledge-form-error" role="alert">{suggestionsValidationError}</p>}{suggestionsError && <p className="knowledge-form-error" role="alert">{suggestionsError}</p>}</div></section>
       {showStructuredPriceTable ? <StructuredPriceTable category={detail.category} knowledge={detail.knowledge} items={priceItems} onReplace={() => setReplaceMode(true)} onPriceSaved={onKnowledgeSaved} /> : <div className="knowledge-editor">
         {detail.category.type === "price_list" && replaceMode && <button className="knowledge-secondary-button" type="button" onClick={() => setReplaceMode(false)}>بازگشت به جدول قیمت‌ها</button>}
         {detail.category.type === "price_list" && !priceItems && detail.knowledge && <p className="knowledge-form-error" role="alert"><CircleAlert size={17} aria-hidden="true" />دادهٔ جدول قیمت معتبر نیست؛ لیست را با ورود متن جایگزین کنید.</p>}
+        <label className="knowledge-field knowledge-editor__field knowledge-price-input-format"><span>نوع اطلاعات دسته</span><select value={replacementType} onChange={handleReplacementTypeChange} disabled={previewState === "loading" || saveState === "loading"}><option value="price_list">لیست محصولات و قیمت‌ها</option><option value="per_watt_price">قیمت بر اساس وات</option><option value="text">اطلاعات متنی</option></select></label>
         <label className="knowledge-field knowledge-editor__field"><span>اطلاعات این دسته</span><textarea dir="rtl" value={rawText} onChange={handleTextChange} disabled={previewState === "loading" || saveState === "loading"} /></label>
         <button className="knowledge-primary-button" type="button" onClick={handlePreview} disabled={previewState === "loading" || saveState === "loading"}>
           {previewState === "loading" && <LoaderCircle className="knowledge-spinner" size={18} aria-hidden="true" />}
           {previewState === "loading" ? "در حال بررسی..." : "بررسی اطلاعات"}
         </button>
         {previewState === "error" && <p className="knowledge-form-error" role="alert"><CircleAlert size={17} aria-hidden="true" />بررسی اطلاعات انجام نشد. دوباره تلاش کنید.</p>}
-        <KnowledgePreviewResult category={detail.category} preview={preview} rawText={rawText} invalidated={previewInvalidated} />
+        <KnowledgePreviewResult category={previewCategory} preview={preview} rawText={rawText} invalidated={previewInvalidated} />
         {canSave && <button className="knowledge-primary-button knowledge-save-button" type="button" onClick={handleSave}>تأیید و ذخیره</button>}
         {saveState === "loading" && <button className="knowledge-primary-button knowledge-save-button" type="button" disabled><LoaderCircle className="knowledge-spinner" size={18} aria-hidden="true" />در حال ذخیره...</button>}
         {saveState === "success" && <p className="knowledge-save-message" role="status">اطلاعات با موفقیت ذخیره شد.</p>}
