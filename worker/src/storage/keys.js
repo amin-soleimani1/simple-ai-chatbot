@@ -14,3 +14,7 @@ export function knowledgeCategoryKey(categoryId) {
 export function marketReferenceKey(categoryId) {
 	return `market-reference:${categoryId}`;
 }
+
+export function marketReferenceTargetsKey(categoryId) {
+	return `market-reference:targets:${categoryId}`;
+}
