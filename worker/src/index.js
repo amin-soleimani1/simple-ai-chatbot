@@ -67,9 +67,9 @@ function categoryNeedsMarketReference(category) {
 
 function marketReferenceItemsForCategory(category, reference) {
 	const items = category.status === "available"
-		? reference.items.filter((referenceItem) => category.data.items.some((item) => item.watt === referenceItem.watt && item.available === false))
+		? reference.items.filter((referenceItem) => category.data.items.some((item) => item.watt === referenceItem.attributes.watt && item.available === false))
 		: reference.items;
-	return items.map(({ watt, minPrice, maxPrice, referencePrice }) => ({ watt, minPrice, maxPrice, referencePrice }));
+	return items.filter((item) => Number.isSafeInteger(item.attributes.watt)).map(({ attributes, minPrice, maxPrice, referencePrice }) => ({ watt: attributes.watt, minPrice, maxPrice, referencePrice }));
 }
 
 async function marketReferenceFallback(env, category) {

@@ -20,7 +20,7 @@ function createDraft(category, reference = null) {
     updatedAt: toDateTimeLocal(reference?.updatedAt) || nowDateTimeLocal(),
     sampleCount: reference?.research?.sampleCount?.toString() ?? "",
     items: reference?.items.map((item) => ({
-      watt: item.watt.toString(), minPrice: item.minPrice.toString(), referencePrice: item.referencePrice.toString(), maxPrice: item.maxPrice.toString(),
+      watt: item.attributes?.watt?.toString() ?? "", minPrice: item.minPrice.toString(), referencePrice: item.referencePrice.toString(), maxPrice: item.maxPrice.toString(),
     })) ?? [emptyItem()],
   };
 }
@@ -53,12 +53,12 @@ function validateDraft(draft, categoryId) {
   }
   return {
     value: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       categoryId,
       title,
       updatedAt: new Date(draft.updatedAt).toISOString(),
       research: { sampleCount, method: "manual_market_research" },
-      items,
+      items: items.map((item) => ({ variantId: `${item.watt}w`, label: `${item.watt} وات`, attributes: { watt: item.watt }, minPrice: item.minPrice, referencePrice: item.referencePrice, maxPrice: item.maxPrice })),
     },
   };
 }
@@ -75,7 +75,7 @@ function displayDate(value) {
 function MarketReferenceTable({ reference }) {
   return <div className="market-reference-table__scroll"><table>
     <thead><tr><th>وات</th><th>حداقل قیمت</th><th>قیمت مرجع</th><th>حداکثر قیمت</th></tr></thead>
-    <tbody>{reference.items.map((item) => <tr key={item.watt}><td>{new Intl.NumberFormat("fa-IR").format(item.watt)}</td><td>{formatToman(item.minPrice)}</td><td>{formatToman(item.referencePrice)}</td><td>{formatToman(item.maxPrice)}</td></tr>)}</tbody>
+    <tbody>{reference.items.map((item) => <tr key={item.variantId}><td>{Number.isSafeInteger(item.attributes?.watt) ? new Intl.NumberFormat("fa-IR").format(item.attributes.watt) : item.label}</td><td>{formatToman(item.minPrice)}</td><td>{formatToman(item.referencePrice)}</td><td>{formatToman(item.maxPrice)}</td></tr>)}</tbody>
   </table></div>;
 }
 

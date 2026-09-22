@@ -101,14 +101,15 @@ export async function getKnowledgeCategories() {
 
 function isMarketReference(value) {
   return value
-    && value.schemaVersion === 1
+    && value.schemaVersion === 2
     && typeof value.categoryId === "string"
     && typeof value.title === "string"
     && typeof value.updatedAt === "string"
     && Number.isSafeInteger(value?.research?.sampleCount)
     && value.research.sampleCount > 0
     && value.research.method === "manual_market_research"
-    && Array.isArray(value.items);
+    && Array.isArray(value.items)
+    && value.items.every((item) => typeof item?.variantId === "string" && typeof item.label === "string" && item.attributes && typeof item.attributes === "object");
 }
 
 export async function getMarketReference(categoryId) {

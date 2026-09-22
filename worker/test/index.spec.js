@@ -43,12 +43,12 @@ function createKnowledgeEnv(initialValues = {}) {
 
 function marketReference(overrides = {}) {
 	return {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		categoryId: "economy-bulbs",
 		title: "لامپ اقتصادی",
 		updatedAt: "2026-09-22T00:00:00.000Z",
 		research: { sampleCount: 5, method: "manual_market_research" },
-		items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }],
+		items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }],
 		...overrides,
 	};
 }
@@ -233,7 +233,7 @@ describe("worker routes", () => {
 		expect(first.response.status).toBe(200);
 		expect((await first.response.json()).marketReference).toEqual(created);
 
-		const replacement = marketReference({ updatedAt: "2026-09-23T12:34:56.000Z", items: [{ watt: 12, minPrice: 180000, maxPrice: 220000, referencePrice: 200000 }] });
+		const replacement = marketReference({ updatedAt: "2026-09-23T12:34:56.000Z", items: [{ variantId: "12w", label: "12 وات", attributes: { watt: 12 }, minPrice: 180000, referencePrice: 200000, maxPrice: 220000 }] });
 		const second = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
 			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(replacement),
 		}, env);
@@ -248,9 +248,9 @@ describe("worker routes", () => {
 	it("rejects Market Reference URL/body mismatches and service validation errors without writing", async () => {
 		const invalidBodies = [
 			marketReference({ categoryId: "projectors" }),
-			marketReference({ schemaVersion: 2 }),
-			marketReference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 110000 }] }),
-			marketReference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }, { watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
+			marketReference({ schemaVersion: 1 }),
+			marketReference({ items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 110000 }] }),
+			marketReference({ items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }, { variantId: "9w", label: "9 وات دیگر", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
 		];
 		for (const body of invalidBodies) {
 			const env = createKnowledgeEnv();

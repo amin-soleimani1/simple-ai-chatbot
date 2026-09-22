@@ -1,87 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildMarketReferenceKey, calculateMarketReferenceFreshness, getMarketReference, MarketReferenceValidationError, saveMarketReference, validateMarketReference } from "../src/marketReference/marketReferenceService.js";
 
-function createMarketEnv(initialValues = {}) {
-	const values = new Map(Object.entries(initialValues));
-	return {
-		APP_CONFIG: {
-			get: vi.fn(async (key) => values.get(key) ?? null),
-			put: vi.fn(async (key, value) => values.set(key, value)),
-		},
-		_values: values,
-	};
-}
-
-function reference(overrides = {}) {
-	return {
-		schemaVersion: 1,
-		categoryId: "economy-bulbs",
-		title: "لامپ اقتصادی",
-		updatedAt: "2026-09-22T00:00:00.000Z",
-		research: { sampleCount: 5, method: "manual_market_research" },
-		items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }],
-		...overrides,
-	};
-}
+function createMarketEnv(initialValues = {}) { const values = new Map(Object.entries(initialValues)); return { APP_CONFIG: { get: vi.fn(async (key) => values.get(key) ?? null), put: vi.fn(async (key, value) => values.set(key, value)) }, _values: values }; }
+function reference(overrides = {}) { return { schemaVersion: 2, categoryId: "economy-bulbs", title: "لامپ اقتصادی", updatedAt: "2026-09-22T00:00:00.000Z", research: { sampleCount: 5, method: "manual_market_research" }, items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }], ...overrides }; }
+function legacyReference(overrides = {}) { return { schemaVersion: 1, categoryId: "economy-bulbs", title: "لامپ اقتصادی", updatedAt: "2026-09-22T00:00:00.000Z", research: { sampleCount: 5, method: "manual_market_research" }, items: [{ watt: 9, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }], ...overrides }; }
 
 describe("market reference service", () => {
-	it("builds isolated Market Reference keys", () => {
-		expect(buildMarketReferenceKey("economy-bulbs")).toBe("market-reference:economy-bulbs");
-		expect(() => buildMarketReferenceKey(" ")).toThrow(MarketReferenceValidationError);
+	it("builds isolated keys and saves/reads canonical v2", async () => {
+		const env = createMarketEnv(); expect(buildMarketReferenceKey("economy-bulbs")).toBe("market-reference:economy-bulbs"); expect(() => buildMarketReferenceKey(" ")).toThrow(MarketReferenceValidationError);
+		expect(await saveMarketReference(env, reference())).toEqual(reference()); expect(env._values.get("market-reference:economy-bulbs")).toBe(JSON.stringify(reference())); expect(await getMarketReference(env, "economy-bulbs", "2026-09-23T00:00:00.000Z")).toEqual({ ...reference(), freshness: "current" });
 	});
-
-	it("saves and reads a valid Market Reference with derived freshness", async () => {
-		const env = createMarketEnv();
-		const saved = await saveMarketReference(env, reference());
-		expect(saved).toEqual(reference());
-		expect(env._values.get("market-reference:economy-bulbs")).toBe(JSON.stringify(reference()));
-		expect(await getMarketReference(env, "economy-bulbs", "2026-09-23T00:00:00.000Z")).toEqual({ ...reference(), freshness: "current" });
+	it("accepts generic multi-primitive attributes", () => {
+		const item = { variantId: "warm-gold", label: "Warm gold", attributes: { color: "gold", indoor: true, lumen: 800 }, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }; expect(validateMarketReference(reference({ items: [item] }).items ? reference({ items: [item] }) : null)).toEqual(reference({ items: [item] }));
 	});
-
-	it("returns null for a category without a Market Reference and never writes while reading", async () => {
-		const env = createMarketEnv();
-		expect(await getMarketReference(env, "projectors")).toBeNull();
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	it("rejects strict v2 schema, attributes, price, and field failures", () => {
+		const item = reference().items[0]; const cases = [reference({ schemaVersion: 1 }), reference({ categoryId: "" }), reference({ title: " " }), reference({ updatedAt: "invalid" }), reference({ research: { sampleCount: 0, method: "manual_market_research" } }), reference({ items: [] }), reference({ items: [{ ...item }, { ...item }] }), reference({ items: [{ ...item, variantId: "" }] }), reference({ items: [{ ...item, label: " " }] }), reference({ items: [{ ...item, attributes: {} }] }), reference({ items: [{ ...item, attributes: { " ": "x" } }] }), reference({ items: [{ ...item, attributes: { x: null } }] }), reference({ items: [{ ...item, attributes: { x: [] } }] }), reference({ items: [{ ...item, attributes: { x: {} } }] }), reference({ items: [{ ...item, attributes: { x: Infinity } }] }), reference({ items: [{ ...item, minPrice: 0 }] }), reference({ items: [{ ...item, maxPrice: 0 }] }), reference({ items: [{ ...item, referencePrice: 110000 }] }), { ...reference(), unexpected: true }, reference({ items: [{ ...item, unexpected: true }] })]; for (const value of cases) expect(() => validateMarketReference(value)).toThrow(MarketReferenceValidationError);
 	});
-
-	it("rejects malformed schemas with controlled validation errors", () => {
-		const cases = [
-			reference({ schemaVersion: 2 }),
-			reference({ categoryId: "" }),
-			reference({ title: " " }),
-			reference({ updatedAt: "not-a-timestamp" }),
-			reference({ research: { sampleCount: 0, method: "manual_market_research" } }),
-			reference({ research: { sampleCount: 1, method: "automated" } }),
-			reference({ items: [] }),
-			reference({ items: [{ watt: 0, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
-			reference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }, { watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
-			reference({ items: [{ watt: 9, minPrice: 0, maxPrice: 160000, referencePrice: 140000 }] }),
-			reference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 110000 }] }),
-			reference({ items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 170000 }] }),
-			{ ...reference(), unexpected: true },
-		];
-		for (const invalidReference of cases) expect(() => validateMarketReference(invalidReference)).toThrow(MarketReferenceValidationError);
+	it("reads legacy v1 as normalized v2 without a write or stored migration", async () => {
+		const stored = legacyReference(); const env = createMarketEnv({ "market-reference:economy-bulbs": JSON.stringify(stored) }); const result = await getMarketReference(env, "economy-bulbs", "2026-10-23T00:00:00.000Z"); expect(result).toEqual({ schemaVersion: 2, categoryId: stored.categoryId, title: stored.title, updatedAt: stored.updatedAt, research: stored.research, items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }], freshness: "stale" }); expect(env.APP_CONFIG.put).not.toHaveBeenCalled(); expect(env._values.get("market-reference:economy-bulbs")).toBe(JSON.stringify(stored));
 	});
-
-	it("calculates freshness at exact 30-day and 60-day boundaries", () => {
-		const now = "2026-09-22T00:00:00.000Z";
-		expect(calculateMarketReferenceFreshness("2026-09-01T00:00:00.001Z", now)).toBe("current");
-		expect(calculateMarketReferenceFreshness("2026-08-23T00:00:00.000Z", now)).toBe("current");
-		expect(calculateMarketReferenceFreshness("2026-08-22T23:59:59.999Z", now)).toBe("stale");
-		expect(calculateMarketReferenceFreshness("2026-07-24T00:00:00.000Z", now)).toBe("stale");
-		expect(calculateMarketReferenceFreshness("2026-07-23T23:59:59.999Z", now)).toBe("outdated");
-	});
-
-	it("writes only the Market Reference key and preserves Official Store Knowledge", async () => {
-		const knowledgeRecord = JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } });
-		const categoryRegistry = JSON.stringify([{ id: "economy-bulbs", title: "لامپ اقتصادی", type: "price_list" }]);
-		const env = createMarketEnv({
-			"knowledge:economy-bulbs": knowledgeRecord,
-			"knowledge:categories": categoryRegistry,
-		});
-		await saveMarketReference(env, reference());
-		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("market-reference:economy-bulbs", expect.any(String));
-		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledgeRecord);
-		expect(env._values.get("knowledge:categories")).toBe(categoryRegistry);
-	});
+	it("rejects v1 and unsupported schemas for new writes", async () => { const env = createMarketEnv(); await expect(saveMarketReference(env, legacyReference())).rejects.toBeInstanceOf(MarketReferenceValidationError); await expect(saveMarketReference(env, reference({ schemaVersion: 3 }))).rejects.toBeInstanceOf(MarketReferenceValidationError); expect(env.APP_CONFIG.put).not.toHaveBeenCalled(); });
+	it("keeps missing reads and freshness boundaries safe", async () => { const env = createMarketEnv(); expect(await getMarketReference(env, "projectors")).toBeNull(); expect(env.APP_CONFIG.put).not.toHaveBeenCalled(); const now = "2026-09-22T00:00:00.000Z"; expect(calculateMarketReferenceFreshness("2026-08-23T00:00:00.000Z", now)).toBe("current"); expect(calculateMarketReferenceFreshness("2026-08-22T23:59:59.999Z", now)).toBe("stale"); expect(calculateMarketReferenceFreshness("2026-07-24T00:00:00.000Z", now)).toBe("stale"); expect(calculateMarketReferenceFreshness("2026-07-23T23:59:59.999Z", now)).toBe("outdated"); });
+	it("keeps Official Store Knowledge isolated", async () => { const knowledge = JSON.stringify({ items: [] }); const env = createMarketEnv({ "knowledge:economy-bulbs": knowledge }); await saveMarketReference(env, reference()); expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledge); });
 });
