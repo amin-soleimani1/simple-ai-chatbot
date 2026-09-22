@@ -56,8 +56,8 @@ describe("market reference aggregation service", () => {
 		expect(value).toEqual(original);
 	});
 
-	it("rejects invalid or malformed batches through the observation validation contract", () => {
-		expect(() => aggregateResearchObservations(batch([]))).toThrow(MarketReferenceValidationError);
+	it("accepts an empty extraction batch and rejects malformed batches through the observation validation contract", () => {
+		expect(aggregateResearchObservations(batch([]))).toEqual({ schemaVersion: 1, categoryId: "economy-bulbs", variants: [] });
 		expect(() => aggregateResearchObservations(batch([{ ...observation("20w", 100, "a"), price: "100" }]))).toThrow(MarketReferenceValidationError);
 	});
 });

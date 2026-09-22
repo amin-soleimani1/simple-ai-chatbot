@@ -35,7 +35,7 @@ describe("market reference observation model", () => {
 	it("rejects invalid batch, observation, source, currency, price, URL, and timestamp fields", () => {
 		const observation = batch().observations[0];
 		const cases = [
-			batch({ schemaVersion: 2 }), batch({ categoryId: " " }), batch({ observations: [] }), batch({ observations: {} }),
+			batch({ schemaVersion: 2 }), batch({ categoryId: " " }), batch({ observations: {} }),
 			batch({ observations: [{ ...observation, variantId: " " }] }),
 			batch({ observations: [{ ...observation, price: 0 }] }), batch({ observations: [{ ...observation, price: -1 }] }),
 			batch({ observations: [{ ...observation, price: 1.5 }] }), batch({ observations: [{ ...observation, price: "220000" }] }),
