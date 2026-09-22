@@ -1,6 +1,7 @@
 import { getJson, putJson } from "../storage/configStore.js";
 import { STORAGE_KEYS } from "../storage/keys.js";
 import { MarketReferenceValidationError } from "./marketReferenceService.js";
+import { DEFAULT_MARKET_REFERENCE_CATALOG } from "./defaultMarketReferenceCatalog.js";
 
 const CATALOG_SCHEMA_VERSION = 1;
 const VARIANT_SCHEMAS = new Set(["wattage", "ampere", "breaker_model", "cable_size", "model", "size", "generic"]);
@@ -50,4 +51,12 @@ export async function saveMarketReferenceCatalog(env, catalog) {
 	const validated = validateMarketReferenceCatalog(catalog);
 	await putJson(env, STORAGE_KEYS.MARKET_REFERENCE_CATALOG, validated);
 	return validated;
+}
+
+export async function seedDefaultMarketReferenceCatalog(env) {
+	const defaultCatalog = validateMarketReferenceCatalog(DEFAULT_MARKET_REFERENCE_CATALOG);
+	const existingCatalog = await getMarketReferenceCatalog(env);
+	if (existingCatalog !== null) return { seeded: false, reason: "already_exists" };
+	await putJson(env, STORAGE_KEYS.MARKET_REFERENCE_CATALOG, defaultCatalog);
+	return { seeded: true, reason: "created" };
 }
