@@ -88,17 +88,19 @@ button, textarea { font: inherit; }
 .conversation-scroll::-webkit-scrollbar-thumb:hover { background: #51443a; }
 
 .landing-suggestions {
-  max-height: min(19.5rem, 31dvh);
+  --landing-suggestion-card-height: 5rem;
+  height: calc((2 * var(--landing-suggestion-card-height)) + .5rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: #3d352f #0b090b;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-.landing-suggestions::-webkit-scrollbar { width: 4px; }
-.landing-suggestions::-webkit-scrollbar-track { background: rgb(8 7 8 / 72%); }
-.landing-suggestions::-webkit-scrollbar-thumb { background: #3d352f; border: 1px solid rgb(8 7 8 / 72%); border-radius: 999px; }
-.landing-suggestions::-webkit-scrollbar-thumb:hover { background: #51443a; }
+@media (min-width: 40rem) {
+  .landing-suggestions { --landing-suggestion-card-height: 6rem; }
+}
+
+.landing-suggestions::-webkit-scrollbar { display: none; }
 
 .chatbot-background footer textarea {
   scrollbar-color: #60482e transparent;
