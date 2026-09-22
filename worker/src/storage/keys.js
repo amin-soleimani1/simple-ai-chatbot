@@ -4,6 +4,7 @@ export const STORAGE_KEYS = Object.freeze({
 	APPEARANCE_CONFIG: "config:appearance",
 	SUGGESTIONS_CONFIG: "config:suggestions",
 	KNOWLEDGE_CATEGORIES: "knowledge:categories",
+	MARKET_REFERENCE_CATALOG: "market-reference:catalog",
 });
 
 export function knowledgeCategoryKey(categoryId) {
