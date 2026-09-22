@@ -1,6 +1,9 @@
 import { getJson, putJson } from "../storage/configStore.js";
 import { marketReferenceTargetsKey } from "../storage/keys.js";
 import { MarketReferenceValidationError } from "./marketReferenceService.js";
+import { DEFAULT_MARKET_REFERENCE_TARGETS } from "./defaultMarketReferenceTargets.js";
+import { DEFAULT_MARKET_REFERENCE_CATALOG } from "./defaultMarketReferenceCatalog.js";
+import { validateMarketReferenceCatalog } from "./marketReferenceCatalogService.js";
 
 const RESEARCH_TARGETS_SCHEMA_VERSION = 1;
 
@@ -59,4 +62,20 @@ export async function getResearchTargets(env, categoryId) {
 	catch { throw validationError("Research Targets storage is invalid."); }
 	if (targetSet === null) return null;
 	return validateResearchTargets(targetSet);
+}
+
+/** Explicitly seeds only missing predefined target sets; it never overwrites stored targets. */
+export async function seedDefaultMarketReferenceTargets(env) {
+	const catalog = validateMarketReferenceCatalog(DEFAULT_MARKET_REFERENCE_CATALOG);
+	const catalogIds = new Set(catalog.categories.map((category) => category.id));
+	if (DEFAULT_MARKET_REFERENCE_TARGETS.length !== catalogIds.size || new Set(DEFAULT_MARKET_REFERENCE_TARGETS.map((targetSet) => targetSet.categoryId)).size !== catalogIds.size || DEFAULT_MARKET_REFERENCE_TARGETS.some((targetSet) => !catalogIds.has(targetSet.categoryId))) throw validationError("Default Research Targets do not match the Market Reference Catalog.");
+	const createdCategoryIds = []; const skippedCategoryIds = [];
+	for (const targetSet of DEFAULT_MARKET_REFERENCE_TARGETS) {
+		const valid = validateResearchTargets(targetSet);
+		const existing = await getResearchTargets(env, valid.categoryId);
+		if (existing !== null) { skippedCategoryIds.push(valid.categoryId); continue; }
+		await putJson(env, buildResearchTargetsKey(valid.categoryId), valid);
+		createdCategoryIds.push(valid.categoryId);
+	}
+	return { createdCategoryIds, skippedCategoryIds };
 }
