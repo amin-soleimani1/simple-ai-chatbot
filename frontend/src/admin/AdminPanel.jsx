@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   Bot, BrainCircuit, ChevronLeft, LogOut, Menu, Palette, PanelTop,
-  Store, X,
+  Store, Tags, X,
 } from "lucide-react";
 import { adminSections, getAdminPath, navigateTo } from "./adminRoutes";
 import { getKnowledgeCategoryDetail, logoutAdmin } from "../services/api";
 import KnowledgePage from "./KnowledgePage";
 import KnowledgeCategoryDetail from "./KnowledgeCategoryDetail";
+import MarketReferencePage from "./MarketReferencePage";
 import "./admin.css";
 
-const icons = [PanelTop, BrainCircuit, Store, Bot, Palette, Menu];
+const icons = [PanelTop, BrainCircuit, Tags, Store, Bot, Palette, Menu];
 
 function AdminNav({ activePath, onNavigate }) {
   return (
@@ -153,7 +154,7 @@ export default function AdminPanel({ onLogout }) {
           onLogout={handleLogout}
           onMenu={() => setDrawerOpen(true)}
         />
-        <div className="admin-content">{section.path === "/admin" ? <Dashboard onNavigate={handleNavigate} /> : path === "/admin/knowledge" ? <KnowledgePage onNavigate={handleNavigate} /> : isKnowledgeDetailPath ? <KnowledgeCategoryDetail key={categoryId} detail={currentKnowledgeDetail} onKnowledgeSaved={handleKnowledgeSaved} /> : <SectionPlaceholder section={section} />}</div>
+        <div className="admin-content">{section.path === "/admin" ? <Dashboard onNavigate={handleNavigate} /> : path === "/admin/knowledge" ? <KnowledgePage onNavigate={handleNavigate} /> : path === "/admin/market-reference" ? <MarketReferencePage /> : isKnowledgeDetailPath ? <KnowledgeCategoryDetail key={categoryId} detail={currentKnowledgeDetail} onKnowledgeSaved={handleKnowledgeSaved} /> : <SectionPlaceholder section={section} />}</div>
       </div>
       {drawerOpen && <div className="admin-drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`admin-drawer ${drawerOpen ? "is-open" : ""}`} aria-hidden={!drawerOpen}>
