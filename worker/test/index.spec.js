@@ -7,6 +7,7 @@ import {
 import { describe, it, expect, vi } from "vitest";
 import worker from "../src";
 import { getKnowledgeCategory, getRuntimeKnowledge, KNOWLEDGE_CATEGORIES, normalizePriceListItem, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
+import { DEFAULT_MARKET_REFERENCE_CATALOG } from "../src/marketReference/defaultMarketReferenceCatalog.js";
 
 const authEnv = {
 	ADMIN_PIN: "123456",
@@ -189,6 +190,75 @@ describe("worker routes", () => {
 		}), authEnv);
 		expect(response.status).toBe(403);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+	});
+
+	it("requires the existing Admin session for Market Reference Catalog GET and seed", async () => {
+		const env = createKnowledgeEnv();
+		for (const options of [{}, { method: "POST" }]) {
+			const path = options.method === "POST" ? "/admin/market-reference/catalog/seed" : "/admin/market-reference/catalog";
+			const response = await worker.fetch(request(path, options), env);
+			expect(response.status).toBe(401);
+			expect(await response.json()).toEqual({ authenticated: false });
+		}
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("returns a controlled missing response for an authenticated Market Reference Catalog GET without writing", async () => {
+		const env = createKnowledgeEnv();
+		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
+		expect(response.status).toBe(404);
+		expect(await response.json()).toEqual({ error: "Market Reference Catalog not found." });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+	});
+
+	it("explicitly seeds and reads the predefined Market Reference Catalog without creating datasets or modifying knowledge", async () => {
+		const dataset = JSON.stringify({ price: 1 });
+		const knowledge = JSON.stringify({ data: "official" });
+		const env = createKnowledgeEnv({ "market-reference:economy-bulbs": dataset, "knowledge:economy-bulbs": knowledge });
+		const seeded = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
+		expect(seeded.response.status).toBe(200);
+		expect(await seeded.response.json()).toEqual({ seeded: true, reason: "created" });
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("market-reference:catalog", expect.any(String));
+		expect(env._values.get("market-reference:economy-bulbs")).toBe(dataset);
+		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledge);
+
+		const read = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
+		expect(read.response.status).toBe(200);
+		expect(await read.response.json()).toEqual({ catalog: DEFAULT_MARKET_REFERENCE_CATALOG });
+		expect(DEFAULT_MARKET_REFERENCE_CATALOG).toMatchObject({ schemaVersion: 1 });
+		expect(DEFAULT_MARKET_REFERENCE_CATALOG.categories).toHaveLength(50);
+		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not overwrite an existing Market Reference Catalog during a second explicit seed", async () => {
+		const env = createKnowledgeEnv();
+		await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
+		const stored = env._values.get("market-reference:catalog");
+		env.APP_CONFIG.put.mockClear();
+		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ seeded: false, reason: "already_exists" });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
+		expect(env._values.get("market-reference:catalog")).toBe(stored);
+	});
+
+	it("gives catalog routes precedence over the existing Market Reference category route", async () => {
+		const env = createKnowledgeEnv();
+		const catalog = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
+		expect(catalog.response.status).toBe(404);
+		expect(await catalog.response.json()).toEqual({ error: "Market Reference Catalog not found." });
+		const seed = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
+		expect(seed.response.status).toBe(200);
+		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("market-reference:catalog", expect.any(String));
+	});
+
+	it("returns a controlled error for a malformed stored Market Reference Catalog without writing", async () => {
+		const env = createKnowledgeEnv({ "market-reference:catalog": "{bad-json" });
+		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
+		expect(response.status).toBe(500);
+		expect(await response.json()).toEqual({ error: "Unable to access Market Reference Catalog storage." });
+		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
 	});
 
 	it("requires the existing Admin session for Market Reference GET and PUT", async () => {

@@ -1,6 +1,7 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
 import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
 import { getMarketReference, MarketReferenceValidationError, saveMarketReference } from "./marketReference/marketReferenceService.js";
+import { getMarketReferenceCatalog, seedDefaultMarketReferenceCatalog } from "./marketReference/marketReferenceCatalogService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -244,6 +245,32 @@ async function handleMarketReference(request, env, pathname) {
 	}
 }
 
+async function handleMarketReferenceCatalog(request, env, pathname) {
+	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
+
+	if (pathname === "/admin/market-reference/catalog") {
+		if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		try {
+			const catalog = await getMarketReferenceCatalog(env);
+			if (!catalog) return jsonResponse({ error: "Market Reference Catalog not found." }, 404, request);
+			return jsonResponse({ catalog }, 200, request);
+		} catch {
+			return jsonResponse({ error: "Unable to access Market Reference Catalog storage." }, 500, request);
+		}
+	}
+
+	if (pathname === "/admin/market-reference/catalog/seed") {
+		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+		try {
+			return jsonResponse(await seedDefaultMarketReferenceCatalog(env), 200, request);
+		} catch {
+			return jsonResponse({ error: "Unable to initialize Market Reference Catalog." }, 500, request);
+		}
+	}
+
+	return jsonResponse({ error: "Market Reference Catalog not found." }, 404, request);
+}
+
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
@@ -283,6 +310,10 @@ export default {
 			} catch {
 				return jsonResponse({ error: "Unable to access knowledge storage." }, 500, request);
 			}
+		}
+
+		if (pathname === "/admin/market-reference/catalog" || pathname === "/admin/market-reference/catalog/seed") {
+			return handleMarketReferenceCatalog(request, env, pathname);
 		}
 
 		if (pathname === "/admin/market-reference" || pathname.startsWith("/admin/market-reference/")) {
