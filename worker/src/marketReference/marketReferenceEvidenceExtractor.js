@@ -17,6 +17,23 @@ function unitPattern(value, schema) {
 	const unit = schema === "wattage" ? "(?:وات|w)" : "(?:آمپر|a)";
 	return new RegExp(`(?<!\\d)${value}\\s*${unit}(?![\\p{L}\\p{N}])`, "iu");
 }
+export function normalizeMarketEvidenceText(value) { return normalizeDigits(value).replace(/٬/g, ","); }
+export function matchesExactMarketVariantText(text, value, schema) {
+	if (typeof text !== "string" || !["wattage", "ampere"].includes(schema) || !Number.isSafeInteger(value) || value <= 0) return false;
+	const normalized = normalizeMarketEvidenceText(text).trim();
+	const match = unitPattern(value, schema).exec(normalized);
+	return match !== null && match[0] === normalized;
+}
+export function parseExplicitTomanPriceText(text) {
+	if (typeof text !== "string") return null;
+	const normalized = normalizeMarketEvidenceText(text).trim();
+	const match = normalized.match(/^(\d{1,3}(?:,\d{3})+|\d+)\s*(?:تومان|تومن)$/iu);
+	if (!match) return null;
+	const token = match[1]; const digits = token.replace(/,/g, "");
+	if (!/^\d+$/.test(digits) || (token.includes(",") && !/^\d{1,3}(?:,\d{3})+$/.test(token))) return null;
+	const price = Number(digits);
+	return Number.isSafeInteger(price) && price > 0 ? price : null;
+}
 function variantEvidence(text, value, schema) {
 	const values = new Set();
 	const unit = schema === "wattage" ? "(?:وات|w)" : "(?:آمپر|a)";
@@ -54,7 +71,7 @@ export function extractResearchObservations({ category, target, rawSearchResult,
 	if (raw.queryId !== `${validatedCategory.id}:${validatedTarget.variantId}:price`) throw error("Raw Search Result queryId must match the research category and target.");
 	const attributeValue = targetAttribute(validatedCategory, validatedTarget);
 	const observations = attributeValue === null ? [] : raw.results.flatMap((result) => {
-		const evidence = normalizeDigits(`${result.title}\n${result.snippet}`);
+		const evidence = normalizeMarketEvidenceText(`${result.title}\n${result.snippet}`);
 		if (!variantEvidence(evidence, attributeValue, validatedCategory.variantSchema) || hasPriceRange(evidence)) return [];
 		const prices = parseTomanPrices(evidence);
 		if (prices.size !== 1) return [];
