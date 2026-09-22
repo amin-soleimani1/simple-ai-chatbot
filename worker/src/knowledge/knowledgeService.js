@@ -323,7 +323,7 @@ function runtimeCategoryData(category, record) {
 	if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) return null;
 
 	if (category.type === "price_list") {
-		if (!Array.isArray(parsedData.items) || parsedData.items.length === 0) return null;
+		if (!Array.isArray(parsedData.items)) return null;
 		const seenWatts = new Set();
 		const items = [];
 		for (const item of parsedData.items) {
@@ -416,7 +416,7 @@ export function normalizePriceListItem(item) {
 
 function validStoredPriceItems(record) {
 	const items = record?.parsedData?.items;
-	if (!Array.isArray(items) || items.length === 0) return null;
+	if (!Array.isArray(items)) return null;
 	const watts = new Set();
 	for (const item of items) {
 		const normalizedItem = normalizePriceListItem(item);
@@ -481,7 +481,6 @@ export async function deletePriceListItem(env, category, watt) {
 	const record = await getKnowledgeRecord(env, category);
 	const items = validStoredPriceItems(record);
 	if (!items) throw categoryError("Stored price list is invalid.", 409);
-	if (items.length === 1) throw categoryError("The last price item cannot be deleted.", 409);
 	if (!items.some((item) => item.watt === watt)) throw categoryError("Price item not found.", 404);
 	const nextItems = items.filter((item) => item.watt !== watt);
 	const nextRecord = {

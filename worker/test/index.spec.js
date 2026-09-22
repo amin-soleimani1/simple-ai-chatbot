@@ -172,15 +172,15 @@ describe("worker routes", () => {
 		expect(response.status).toBe(405);
 	});
 
-	it("allows PUT in an admin knowledge preflight from an allowed origin", async () => {
+	it("allows DELETE in an admin knowledge preflight from an allowed origin", async () => {
 		const response = await worker.fetch(request("/admin/knowledge/projectors", {
 			method: "OPTIONS",
-			headers: { Origin: "http://127.0.0.1:5173", "Access-Control-Request-Method": "PUT" },
+			headers: { Origin: "http://127.0.0.1:5173", "Access-Control-Request-Method": "DELETE" },
 		}), authEnv);
 		expect(response.status).toBe(204);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:5173");
 		expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
-		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, PATCH, OPTIONS");
+		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST, PUT, PATCH, DELETE, OPTIONS");
 	});
 
 	it("keeps disallowed origins blocked for preflight", async () => {
@@ -820,8 +820,8 @@ describe("worker routes", () => {
 		}
 		const finalItemEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 220000 }] } }) });
 		const { response } = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, finalItemEnv);
-		expect(response.status).toBe(409);
-		expect(finalItemEnv.APP_CONFIG.put).not.toHaveBeenCalled();
+		expect(response.status).toBe(200);
+		expect(finalItemEnv.APP_CONFIG.put).toHaveBeenCalledTimes(1);
 		const malformedEnv = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ parsedData: { items: [{ watt: 20, price: 0 }, { watt: 40, price: 420000 }] } }) });
 		const malformed = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, malformedEnv);
 		expect(malformed.response.status).toBe(409);
@@ -1100,6 +1100,29 @@ describe("worker routes", () => {
 			status: "available", showInSuggestions: false, sortOrder: 0,
 		});
 	});
+  it("keeps legacy price-list items readable and watt-addressable", async () => {
+    const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ id: "economy-bulbs", type: "price_list", parsedData: { items: [{ watt: 9, price: 160000, available: true }] } }) });
+    const added = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ watt: 20, price: 220000 }) }, env);
+    expect(added.response.status).toBe(201);
+    expect((await added.response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 160000, available: true }, { watt: 20, price: 220000, available: true }]);
+    const removed = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, env);
+    expect(removed.response.status).toBe(200);
+    expect((await removed.response.json()).record.parsedData.items).toEqual([{ watt: 9, price: 160000, available: true }]);
+  });
+
+  it("keeps an empty price list readable and supports adding after final deletion", async () => {
+    const env = createKnowledgeEnv({ "knowledge:economy-bulbs": JSON.stringify({ id: "economy-bulbs", type: "price_list", parsedData: { items: [{ watt: 20, price: 220000, available: true }] } }) });
+    const deleted = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items/20", { method: "DELETE" }, env);
+    expect(deleted.response.status).toBe(200);
+    expect((await deleted.response.json()).record.parsedData.items).toEqual([]);
+    const read = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs", {}, env);
+    expect(read.response.status).toBe(200);
+    expect((await read.response.json()).knowledge.parsedData.items).toEqual([]);
+    const added = await authenticatedKnowledgeRequest("/admin/knowledge/economy-bulbs/items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ watt: 20, price: 220000 }) }, env);
+    expect(added.response.status).toBe(201);
+    expect((await added.response.json()).record.parsedData.items).toEqual([{ watt: 20, price: 220000, available: true }]);
+    expect((await getRuntimeKnowledge(env)).categories.find((category) => category.id === "economy-bulbs")?.data.items).toEqual([{ watt: 20, priceToman: 220000, available: true }]);
+  });
 });
 
 describe("market reference bootstrap route", () => {
