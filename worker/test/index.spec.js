@@ -1065,3 +1065,21 @@ describe("worker routes", () => {
 		});
 	});
 });
+
+describe("market reference bootstrap route", () => {
+	it("requires an admin session and initializes missing targets and frozen datasets idempotently", async () => {
+		const unauthenticated = await worker.fetch(request("/admin/market-reference/bootstrap", { method: "POST" }), createKnowledgeEnv());
+		expect(unauthenticated.status).toBe(401);
+		const { response, env: value } = await authenticatedKnowledgeRequest("/admin/market-reference/bootstrap", { method: "POST" });
+		expect(response.status).toBe(200);
+		const first = await response.json();
+		expect(first.targets.createdCategoryIds).toHaveLength(50);
+		expect(first.datasets.created).toEqual(["led-bulbs", "halogen-bulbs", "led-strips"]);
+		expect(value._values.get("market-reference:catalog")).toBeUndefined();
+		expect(value._values.get("knowledge:led-bulbs")).toBeUndefined();
+		const cookie = await createSessionCookie();
+		const again = await worker.fetch(request("/admin/market-reference/bootstrap", { method: "POST", headers: { Cookie: cookie } }), value);
+		expect((await again.json()).datasets.created).toEqual([]);
+		expect(value.APP_CONFIG.put.mock.calls.map(([key]) => key).every((key) => key.startsWith("market-reference:targets:") || ["market-reference:led-bulbs", "market-reference:halogen-bulbs", "market-reference:led-strips"].includes(key))).toBe(true);
+	});
+});

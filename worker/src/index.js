@@ -2,6 +2,7 @@ import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, r
 import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
 import { getMarketReference, MarketReferenceValidationError, saveMarketReference } from "./marketReference/marketReferenceService.js";
 import { getMarketReferenceCatalog, seedDefaultMarketReferenceCatalog } from "./marketReference/marketReferenceCatalogService.js";
+import { initializeMarketReferenceBootstrap } from "./marketReference/marketReferenceBootstrapInitializationService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -271,6 +272,13 @@ async function handleMarketReferenceCatalog(request, env, pathname) {
 	return jsonResponse({ error: "Market Reference Catalog not found." }, 404, request);
 }
 
+async function handleMarketReferenceBootstrap(request, env) {
+	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
+	if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
+	try { return jsonResponse(await initializeMarketReferenceBootstrap(env), 200, request); }
+	catch { return jsonResponse({ error: "Unable to initialize Market Reference bootstrap." }, 500, request); }
+}
+
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
@@ -314,6 +322,10 @@ export default {
 
 		if (pathname === "/admin/market-reference/catalog" || pathname === "/admin/market-reference/catalog/seed") {
 			return handleMarketReferenceCatalog(request, env, pathname);
+		}
+
+		if (pathname === "/admin/market-reference/bootstrap") {
+			return handleMarketReferenceBootstrap(request, env);
 		}
 
 		if (pathname === "/admin/market-reference" || pathname.startsWith("/admin/market-reference/")) {
