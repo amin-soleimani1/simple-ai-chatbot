@@ -17,6 +17,18 @@ function priceListRecord(id = "economy-bulbs", items = [{ watt: 9, price: 160000
 	return JSON.stringify({ id, type: "price_list", rawText: "not parsed at runtime", parsedData: { items } });
 }
 
+function marketReferenceRecord(categoryId = "economy-bulbs", items = [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }], updatedAt = new Date().toISOString()) {
+	return JSON.stringify({
+		schemaVersion: 1, categoryId, title: "Market economy bulbs", updatedAt,
+		research: { sampleCount: 5, method: "manual_market_research" }, items,
+	});
+}
+
+function categoryWithStatus(id, status) {
+	const category = KNOWLEDGE_CATEGORIES.find((item) => item.id === id);
+	return { ...category, schemaVersion: 2, status, showInSuggestions: true, sortOrder: 10 };
+}
+
 describe("runtime knowledge", () => {
 	it("includes saved default price, per-watt, and text categories without reparsing raw text", async () => {
 		const runtime = await getRuntimeKnowledge(createRuntimeEnv({
@@ -134,6 +146,8 @@ describe("runtime knowledge", () => {
 		expect(prompt).toContain("takes precedence over item availability");
 		expect(prompt).toContain("current purchasable price");
 		expect(prompt).toContain('"status":"available"');
+		expect(prompt).toContain('"priceSource":"store"');
+		expect(prompt).toContain('"marketReferences":[]');
 		expect(prompt).not.toContain('"boxedPrice"');
 		expect(prompt).toContain("قانون قطعی محاسبات");
 		expect(prompt).toContain("هرگز operands، operators، equation، formula، ضرب، جمع، مراحل محاسبه یا reasoning محاسباتی را نمایش نده");
@@ -173,6 +187,102 @@ describe("runtime knowledge", () => {
 			},
 		});
 		expect(env.AI.run).not.toHaveBeenCalled();
+	});
+
+	it("passes source-separated usable Market Reference data and safeguards to the AI context", async () => {
+		const updatedAt = new Date(Date.now() - (31 * 24 * 60 * 60 * 1000)).toISOString();
+		const env = createRuntimeEnv({
+			"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 9, price: 160000, available: false }]),
+			"market-reference:economy-bulbs": marketReferenceRecord("economy-bulbs", [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }], updatedAt),
+		});
+		env.AI = { run: vi.fn().mockResolvedValue({ response: "ok" }) };
+		await worker.fetch(new Request("http://example.com/chat", {
+			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "price" }),
+		}), env);
+		const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+		expect(prompt).toContain('"priceSource":"store"');
+		expect(prompt).toContain('"priceSource":"market_reference"');
+		expect(prompt).toContain('"updatedAt":"' + updatedAt + '"');
+		expect(prompt).toContain('"freshness":"stale"');
+		expect(prompt).toContain('"referencePrice":140000');
+		expect(prompt).toContain("never store prices");
+		expect(prompt).toContain("current market-reference data is insufficient");
+	});
+
+	it("keeps an available Official Store Price ahead of an existing Market Reference", async () => {
+		const env = createRuntimeEnv({
+			"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 9, price: 160000, available: true }]),
+			"market-reference:economy-bulbs": marketReferenceRecord(),
+		});
+		env.AI = { run: vi.fn() };
+		const response = await worker.fetch(new Request("http://example.com/chat", {
+			method: "POST", headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ message: "price", presentationRequest: { type: "price_table", categoryId: "economy-bulbs" } }),
+		}), env);
+		const presentation = (await response.json()).presentation;
+		expect(presentation.rows).toEqual([{ watt: 9, priceToman: 160000, available: true }]);
+		expect(presentation.marketReference).toBeUndefined();
+		expect(env.APP_CONFIG.get.mock.calls.map(([key]) => key)).not.toContain("market-reference:economy-bulbs");
+	});
+
+	it("attaches matching current or stale Market Reference fallback only for unavailable items", async () => {
+		for (const [updatedAt, freshness] of [[new Date().toISOString(), "current"], [new Date(Date.now() - (31 * 24 * 60 * 60 * 1000)).toISOString(), "stale"]]) {
+			const env = createRuntimeEnv({
+				"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 9, price: 160000, available: false }]),
+				"market-reference:economy-bulbs": marketReferenceRecord("economy-bulbs", [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }], updatedAt),
+			});
+			env.AI = { run: vi.fn() };
+			const response = await worker.fetch(new Request("http://example.com/chat", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message: "price", presentationRequest: { type: "price_table", categoryId: "economy-bulbs" } }),
+			}), env);
+			const presentation = (await response.json()).presentation;
+			expect(presentation.rows).toEqual([{ watt: 9, priceToman: 160000, available: false }]);
+			expect(presentation.marketReference).toEqual({
+				categoryId: "economy-bulbs", title: "Market economy bulbs", updatedAt, freshness, priceSource: "market_reference",
+				items: [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }],
+			});
+		}
+	});
+
+	it("does not substitute unmatched, missing, or outdated Market Reference data", async () => {
+		for (const marketReference of [
+			marketReferenceRecord("economy-bulbs", [{ watt: 12, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }]),
+			null,
+			marketReferenceRecord("economy-bulbs", [{ watt: 9, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }], new Date(Date.now() - (61 * 24 * 60 * 60 * 1000)).toISOString()),
+		]) {
+			const env = createRuntimeEnv({
+				"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 9, price: 160000, available: false }]),
+				...(marketReference ? { "market-reference:economy-bulbs": marketReference } : {}),
+			});
+			env.AI = { run: vi.fn() };
+			const response = await worker.fetch(new Request("http://example.com/chat", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message: "price", presentationRequest: { type: "price_table", categoryId: "economy-bulbs" } }),
+			}), env);
+			const presentation = (await response.json()).presentation;
+			expect(presentation.marketReference).toBeUndefined();
+			expect(presentation.rows).toEqual([{ watt: 9, priceToman: 160000, available: false }]);
+		}
+	});
+
+	it("keeps Official Store history separate while exposing Market Reference for out_of_stock and not_sold categories", async () => {
+		for (const status of ["out_of_stock", "not_sold"]) {
+			const env = createRuntimeEnv({
+				"knowledge:categories": JSON.stringify([categoryWithStatus("economy-bulbs", status)]),
+				"knowledge:economy-bulbs": priceListRecord("economy-bulbs", [{ watt: 9, price: 160000, available: true }]),
+				"market-reference:economy-bulbs": marketReferenceRecord(),
+			});
+			env.AI = { run: vi.fn() };
+			const response = await worker.fetch(new Request("http://example.com/chat", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message: "price", presentationRequest: { type: "price_table", categoryId: "economy-bulbs" } }),
+			}), env);
+			const presentation = (await response.json()).presentation;
+			expect(presentation.status).toBe(status);
+			expect(presentation.rows).toEqual(status === "not_sold" ? [] : [{ watt: 9, priceToman: 160000, available: true }]);
+			expect(presentation.marketReference).toMatchObject({ priceSource: "market_reference", freshness: "current" });
+		}
 	});
 
 	it("keeps category status precedence in structured price tables", async () => {

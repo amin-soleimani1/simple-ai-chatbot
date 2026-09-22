@@ -1,5 +1,6 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
 import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, resolveKnowledgeCategory, saveKnowledge, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
+import { getMarketReference } from "./marketReference/marketReferenceService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -59,7 +60,46 @@ async function requestBody(request) {
 	try { return await request.json(); } catch { return null; }
 }
 
-function priceTablePresentation(runtimeKnowledge, presentationRequest) {
+function categoryNeedsMarketReference(category) {
+	return category.type === "price_list"
+		&& (category.status !== "available" || category.data.items.some((item) => item.available === false));
+}
+
+function marketReferenceItemsForCategory(category, reference) {
+	const items = category.status === "available"
+		? reference.items.filter((referenceItem) => category.data.items.some((item) => item.watt === referenceItem.watt && item.available === false))
+		: reference.items;
+	return items.map(({ watt, minPrice, maxPrice, referencePrice }) => ({ watt, minPrice, maxPrice, referencePrice }));
+}
+
+async function marketReferenceFallback(env, category) {
+	if (!categoryNeedsMarketReference(category)) return null;
+	try {
+		const reference = await getMarketReference(env, category.id);
+		if (!reference || reference.freshness === "outdated") return null;
+		const items = marketReferenceItemsForCategory(category, reference);
+		if (!items.length) return null;
+		return {
+			categoryId: reference.categoryId,
+			title: reference.title,
+			updatedAt: reference.updatedAt,
+			freshness: reference.freshness,
+			priceSource: "market_reference",
+			items,
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function marketReferenceContext(env, runtimeKnowledge) {
+	const references = await Promise.all(runtimeKnowledge.categories
+		.filter(categoryNeedsMarketReference)
+		.map((category) => marketReferenceFallback(env, category)));
+	return references.filter(Boolean);
+}
+
+async function priceTablePresentation(env, runtimeKnowledge, presentationRequest) {
 	if (
 		!presentationRequest
 		|| presentationRequest.type !== "price_table"
@@ -71,12 +111,14 @@ function priceTablePresentation(runtimeKnowledge, presentationRequest) {
 	));
 	if (!category || !Array.isArray(category.data?.items) || category.data.items.length === 0) return null;
 
+	const marketReference = await marketReferenceFallback(env, category);
 	return {
 		type: "price_table",
 		categoryId: category.id,
 		title: category.title,
 		status: category.status ?? "available",
 		rows: category.status === "not_sold" ? [] : category.data.items.map(({ watt, priceToman, available }) => ({ watt, priceToman, available })),
+		...(marketReference ? { marketReference } : {}),
 	};
 }
 
@@ -253,15 +295,18 @@ export default {
 
 		try {
 			const runtimeKnowledge = await getRuntimeKnowledge(env);
-			const presentation = priceTablePresentation(runtimeKnowledge, body.presentationRequest);
+			const presentation = await priceTablePresentation(env, runtimeKnowledge, body.presentationRequest);
 			if (presentation) {
 				return jsonResponse({ message: presentation.title, presentation }, 200, request);
 			}
+			const marketReferences = await marketReferenceContext(env, runtimeKnowledge);
 			const products = {
 				available: runtimeKnowledge.available,
-				categories: runtimeKnowledge.categories,
+				categories: runtimeKnowledge.categories.map((category) => ({ ...category, priceSource: "store" })),
+				marketReferences,
 				usageRules: [
 					"Category status is authoritative and takes precedence over item availability: for not_sold state the store does not offer the category and stored prices are never current purchasable prices; for out_of_stock state the whole category is unavailable and stored prices are only last recorded prices; only when category status is available may an item with available=true be presented as available. An item with available=false is currently unavailable and its stored price must never be presented as a current purchasable price.",
+					"Entries with priceSource=store are official store data. Entries with priceSource=market_reference are approximate market references, never store prices. Market references may only be used when their freshness is current or stale, only for the matching watt when an available category item is unavailable, and for unavailable or not_sold categories. For stale references, state that the data is older and include updatedAt. Never use an outdated reference as a current market price. If no valid matching market reference is present, say that current market-reference data is insufficient; never invent, substitute, interpolate, or infer a market price.",
 					"Use only this Knowledge for store information, prices, inventory, and services.",
 					"Never guess prices or store information.",
 					"If requested information is absent from Knowledge, clearly say it is not available.",
