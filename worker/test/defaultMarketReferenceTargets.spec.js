@@ -6,6 +6,7 @@ import { buildResearchTargetsKey, seedDefaultMarketReferenceTargets, validateRes
 
 function env(initial = {}) { const values = new Map(Object.entries(initial)); return { APP_CONFIG: { get: vi.fn(async (key) => values.get(key) ?? null), put: vi.fn(async (key, value) => values.set(key, value)) }, values }; }
 const byId = (id) => DEFAULT_MARKET_REFERENCE_TARGETS.find((item) => item.categoryId === id);
+const fa = (value) => String(value).replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[digit]);
 
 describe("default market reference research targets", () => {
 	it("has exactly one valid, non-empty target set for each of the fifty catalog categories", () => {
@@ -25,6 +26,15 @@ describe("default market reference research targets", () => {
 		expect(byId("flexible-cable").targets).toContainEqual(expect.objectContaining({ variantId: "3x2.5", attributes: { cores: 3, crossSectionMm2: 2.5 } }));
 		expect(byId("trunking").targets).toContainEqual(expect.objectContaining({ variantId: "20x20mm", attributes: { widthMm: 20, heightMm: 20 } }));
 		expect(JSON.stringify(DEFAULT_MARKET_REFERENCE_TARGETS)).not.toMatch(/minPrice|maxPrice|referencePrice|price/i);
+	});
+
+	it("refines only Batch-1 bulb identities while preserving economy bulbs and categories six through fifty", () => {
+		expect(byId("economy-bulbs").targets).toEqual([9, 12, 15, 20, 30, 50].map((watt) => ({ variantId: `${watt}w`, label: `لامپ LED اقتصادی ${fa(watt)} وات`, attributes: { watt } })));
+		for (const target of byId("led-bulbs").targets) expect(target.attributes).toMatchObject({ formFactor: target.attributes.watt <= 20 ? "a-bulb" : "cylindrical", socketType: "E27" });
+		for (const target of byId("filament-bulbs").targets) expect(target.attributes).toMatchObject({ shape: "a60", socketType: "E27" });
+		for (const target of byId("candle-bulbs").targets) expect(target.attributes).toMatchObject({ shape: "candle", socketType: "E14" });
+		for (const target of byId("halogen-bulbs").targets) expect(target.attributes).toMatchObject({ socketType: "GU10" });
+		expect(DEFAULT_MARKET_REFERENCE_TARGETS.slice(5).map((targetSet) => [targetSet.categoryId, targetSet.targets.length])).toEqual([["led-tube-lights", 3], ["led-strips", 3], ["led-modules", 4], ["led-chips", 5], ["led-drivers", 5], ["led-power-supplies", 5], ["ceiling-panels", 5], ["downlights", 4], ["spotlights", 4], ["projectors", 5], ["street-lights", 4], ["wall-lights", 3], ["ceiling-lights", 4], ["emergency-lights", 5], ["sensor-lights", 3], ["cabinet-lights", 4], ["linear-lights", 4], ["track-lights", 4], ["garden-lights", 4], ["led-controllers", 4], ["led-strip-accessories", 5], ["wall-switches", 3], ["wall-sockets", 4], ["dimmers", 4], ["smart-switches", 4], ["industrial-plugs", 5], ["industrial-sockets", 5], ["miniature-circuit-breakers", 8], ["residual-current-devices", 5], ["molded-case-circuit-breakers", 5], ["fuse-holders", 5], ["distribution-boxes", 6], ["distribution-panels", 5], ["contactors", 6], ["electrical-relays", 5], ["time-switches", 3], ["voltage-protectors", 5], ["building-wire", 5], ["flexible-cable", 6], ["power-cable", 6], ["coaxial-cable", 3], ["conduit", 4], ["flexible-conduit", 5], ["trunking", 6], ["junction-boxes", 4]]);
 	});
 
 	it("builds Persian representative queries without searching", () => {
