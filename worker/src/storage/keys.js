@@ -9,3 +9,7 @@ export const STORAGE_KEYS = Object.freeze({
 export function knowledgeCategoryKey(categoryId) {
 	return `knowledge:${categoryId}`;
 }
+
+export function marketReferenceKey(categoryId) {
+	return `market-reference:${categoryId}`;
+}
