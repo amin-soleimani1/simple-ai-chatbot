@@ -101,6 +101,9 @@ button, textarea { font: inherit; }
 }
 
 .landing-suggestions::-webkit-scrollbar { display: none; }
+.landing-exit-item { transition:opacity 260ms ease,transform 260ms ease,filter 260ms ease; }.landing-screen--exiting .landing-exit-item { opacity:0; transform:scale(.975); filter:blur(2px); transition-delay:var(--landing-exit-delay,0ms); }.landing-screen--exiting .landing-exit-item--selected { transform:scale(.95); }
+.chatbot-background footer form { padding:.5rem; }
+@media (prefers-reduced-motion: reduce) { .landing-exit-item { transition-duration:0ms !important; filter:none !important; } }
 
 .chatbot-background footer textarea {
   scrollbar-color: #60482e transparent;

@@ -19,8 +19,10 @@ function ChatbotApp() {
   const hasRobotWokenRef = useRef(false);
   const robotWakeTimerRef = useRef(null);
   const [viewMode, setViewMode] = useState("landing");
+  const [landingTransition, setLandingTransition] = useState(null);
   const hasStartedConversationRef = useRef(false);
   const landingTransitionTimerRef = useRef(null);
+  const landingBackGuardRef = useRef(false);
   const responsePresentationTimerRef = useRef(null);
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
@@ -50,21 +52,41 @@ function ChatbotApp() {
   useEffect(() => () => window.clearTimeout(landingTransitionTimerRef.current), []);
   useEffect(() => () => window.clearTimeout(responsePresentationTimerRef.current), []);
 
-  async function handleSend(input) {
+  useEffect(() => {
+    if (!window.history.state?.chatbotScreen) window.history.replaceState({ chatbotScreen: "landing" }, "", window.location.href);
+    const onPopState = (event) => {
+      if (event.state?.chatbotScreen === "conversation") { setViewMode("conversation"); return; }
+      if (!event.state?.chatbotScreen && !landingBackGuardRef.current) {
+        landingBackGuardRef.current = true;
+        window.history.pushState({ chatbotScreen: "landing" }, "", window.location.href);
+      }
+      setViewMode("landing");
+      setLandingTransition(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  async function handleSend(input, sourceElement, suggestionId) {
     const content = typeof input === "string" ? input : input?.content;
     const presentationRequest = typeof input === "string" ? undefined : input?.presentationRequest;
     const text = typeof content === "string" ? content.trim() : "";
 
     if (!text || isSendingRef.current) return;
 
-    const isFirstMessage = !hasStartedConversationRef.current;
+    const isFirstMessage = viewMode === "landing";
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const requestStartedAt = performance.now();
 
     if (isFirstMessage) {
       hasStartedConversationRef.current = true;
+      const rect = sourceElement?.getBoundingClientRect?.();
+      const origin = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight - 110 };
+      const selectedId = suggestionId ? `suggestion-${suggestionId}` : null;
+      setLandingTransition({ origin, selectedId });
       setViewMode("transitioning");
-      const transitionDuration = reducedMotion ? 0 : 930;
+      window.history.pushState({ chatbotScreen: "conversation" }, "", window.location.href);
+      const transitionDuration = reducedMotion ? 0 : 560;
       landingTransitionTimerRef.current = window.setTimeout(() => setViewMode("conversation"), transitionDuration);
     }
 
@@ -114,7 +136,7 @@ function ChatbotApp() {
     return authenticated;
   }
 
-  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
+  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} transition={landingTransition} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} /><ChatInput onSend={handleSend} isSending={isSending} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
 }
 
 function App() {
