@@ -3,6 +3,12 @@ import { validateResearchObservationBatch } from "./marketReferenceObservationSe
 
 const AGGREGATION_SCHEMA_VERSION = 1;
 
+function validationError(message) { return new MarketReferenceValidationError(message); }
+function isPlainObject(value) { return Boolean(value) && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null); }
+function assertExactKeys(value, keys, label) { if (!isPlainObject(value) || Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => !(key in value))) throw validationError(`${label} is invalid.`); }
+function nonEmptyString(value, label) { if (typeof value !== "string" || !value.trim()) throw validationError(`${label} must be a non-empty string.`); }
+function nonNegativeInteger(value, label) { if (!Number.isSafeInteger(value) || value < 0) throw validationError(`${label} must be a non-negative integer.`); }
+
 function median(values) {
 	const middle = Math.floor(values.length / 2);
 	return values.length % 2 === 1 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
@@ -65,4 +71,25 @@ export function aggregateResearchObservations(batch) {
 			.sort(([left], [right]) => left.localeCompare(right))
 			.map(([variantId, observations]) => aggregateVariant(variantId, observations)),
 	};
+}
+
+export function validateAggregationResult(result) {
+	assertExactKeys(result, ["schemaVersion", "categoryId", "variants"], "Aggregation Result");
+	if (result.schemaVersion !== AGGREGATION_SCHEMA_VERSION) throw validationError(`Aggregation Result schemaVersion must be ${AGGREGATION_SCHEMA_VERSION}.`);
+	nonEmptyString(result.categoryId, "Aggregation Result categoryId");
+	if (!Array.isArray(result.variants) || result.variants.length === 0) throw validationError("Aggregation Result variants must be a non-empty array.");
+	const variantIds = new Set();
+	for (const variant of result.variants) {
+		assertExactKeys(variant, ["variantId", "minPrice", "referencePrice", "maxPrice", "stats"], "Aggregation Result variant");
+		nonEmptyString(variant.variantId, "Aggregation Result variantId");
+		if (variantIds.has(variant.variantId)) throw validationError("Aggregation Result variantIds must be unique.");
+		variantIds.add(variant.variantId);
+		for (const key of ["minPrice", "referencePrice", "maxPrice"]) if (!Number.isSafeInteger(variant[key]) || variant[key] <= 0) throw validationError(`Aggregation Result ${key} must be a positive integer.`);
+		if (variant.minPrice > variant.referencePrice || variant.referencePrice > variant.maxPrice) throw validationError("Aggregation Result prices must satisfy minPrice <= referencePrice <= maxPrice.");
+		assertExactKeys(variant.stats, ["rawObservationCount", "deduplicatedObservationCount", "retainedObservationCount", "outlierCount", "independentSourceCount"], "Aggregation Result stats");
+		for (const key of Object.keys(variant.stats)) nonNegativeInteger(variant.stats[key], `Aggregation Result stats ${key}`);
+		const stats = variant.stats;
+		if (stats.retainedObservationCount < 1 || stats.independentSourceCount > stats.retainedObservationCount || stats.rawObservationCount < stats.deduplicatedObservationCount || stats.deduplicatedObservationCount < stats.retainedObservationCount || stats.outlierCount !== stats.deduplicatedObservationCount - stats.retainedObservationCount) throw validationError("Aggregation Result stats are inconsistent.");
+	}
+	return result;
 }
