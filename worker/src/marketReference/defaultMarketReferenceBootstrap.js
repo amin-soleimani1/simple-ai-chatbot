@@ -31,10 +31,11 @@ export const DEFAULT_MARKET_REFERENCE_BOOTSTRAP = [
 		"50w-cylindrical-e27": { minPrice: 620000, referencePrice: 751400, maxPrice: 1028000 },
 	}),
 	dataset("halogen-bulbs", { "7w-gu10": { minPrice: 70900, referencePrice: 161100, maxPrice: 235000 } }),
+	dataset("led-strips", { "12v-single-color-120led-5m": { minPrice: 190000, referencePrice: 282500, maxPrice: 375000 } }),
 ];
 
 export function validateDefaultMarketReferenceBootstrap(bootstrap = DEFAULT_MARKET_REFERENCE_BOOTSTRAP) {
-	if (!Array.isArray(bootstrap) || bootstrap.length !== 2) throw new Error("Default Market Reference bootstrap is invalid.");
+	if (!Array.isArray(bootstrap) || bootstrap.length !== 3) throw new Error("Default Market Reference bootstrap is invalid.");
 	const categoryIds = new Set();
 	for (const value of bootstrap) {
 		const valid = validateMarketReference(value);
@@ -46,6 +47,6 @@ export function validateDefaultMarketReferenceBootstrap(bootstrap = DEFAULT_MARK
 			if (!target || item.label !== target.label || JSON.stringify(item.attributes) !== JSON.stringify(target.attributes)) throw new Error("Default Market Reference bootstrap target identity is invalid.");
 		}
 	}
-	if (!["led-bulbs", "halogen-bulbs"].every((categoryId) => categoryIds.has(categoryId))) throw new Error("Default Market Reference bootstrap is invalid.");
+	if (!["led-bulbs", "halogen-bulbs", "led-strips"].every((categoryId) => categoryIds.has(categoryId))) throw new Error("Default Market Reference bootstrap is invalid.");
 	return bootstrap;
 }
