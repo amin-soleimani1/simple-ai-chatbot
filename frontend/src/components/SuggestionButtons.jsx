@@ -63,9 +63,9 @@ function ConversationRail({ onSelect, suggestions }) {
         setDiscoveryPhase("ring");
         nudgeTimer = window.setTimeout(() => {
           setDiscoveryPhase("nudge");
-          finishTimer = window.setTimeout(() => { hasShownConversationDiscoveryHint = true; setDiscoveryPhase("idle"); }, 414);
+          finishTimer = window.setTimeout(() => { hasShownConversationDiscoveryHint = true; setDiscoveryPhase("idle"); }, 745);
         }, 483);
-      }, 1500);
+      }, 2500);
     }));
     return () => { window.cancelAnimationFrame(setupFrame); window.clearTimeout(ringTimer); window.clearTimeout(nudgeTimer); window.clearTimeout(finishTimer); rail.removeEventListener("scroll", cancelDiscovery); rail.removeEventListener("pointerdown", cancelDiscovery); rail.removeEventListener("wheel", cancelDiscovery); };
   }, []);
@@ -95,9 +95,9 @@ function LandingSuggestions({ onSelect, suggestions }) {
         setPhase("ring");
         nudgeTimer = window.setTimeout(() => {
           setPhase("nudge");
-          finishTimer = window.setTimeout(() => { hasShownLandingScrollHint = true; setPhase("idle"); }, 414);
+          finishTimer = window.setTimeout(() => { hasShownLandingScrollHint = true; setPhase("idle"); }, 745);
         }, 483);
-      }, 1500);
+      }, 2500);
     });
     return () => { window.cancelAnimationFrame(frame); window.clearTimeout(ringTimer); window.clearTimeout(nudgeTimer); window.clearTimeout(finishTimer); viewport.removeEventListener("scroll", cancelHint); viewport.removeEventListener("pointerdown", cancelHint); };
   }, []);
