@@ -3,7 +3,7 @@ import { marketReferenceKey } from "../storage/keys.js";
 
 const MARKET_REFERENCE_SCHEMA_VERSION = 2;
 const LEGACY_MARKET_REFERENCE_SCHEMA_VERSION = 1;
-const MARKET_RESEARCH_METHOD = "manual_market_research";
+const MARKET_RESEARCH_METHODS = new Set(["manual_market_research", "automated_market_research"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class MarketReferenceValidationError extends Error {}
@@ -39,7 +39,7 @@ function validateRoot(reference, schemaVersion) {
 	timestampMs(reference.updatedAt);
 	assertExactKeys(reference.research, ["sampleCount", "method"], "Market Reference research");
 	const sampleCount = validatePositiveInteger(reference.research.sampleCount, "Market Reference research sampleCount");
-	if (reference.research.method !== MARKET_RESEARCH_METHOD) throw validationError(`Market Reference research method must be ${MARKET_RESEARCH_METHOD}.`);
+	if (!MARKET_RESEARCH_METHODS.has(reference.research.method)) throw validationError("Market Reference research method is invalid.");
 	if (!Array.isArray(reference.items) || reference.items.length === 0) throw validationError("Market Reference items must be a non-empty array.");
 	return { categoryId, title, sampleCount };
 }
@@ -73,7 +73,7 @@ export function validateMarketReference(reference) {
 		const label = validateNonEmptyString(item.label, "Market Reference item label");
 		return { variantId, label, attributes: validateAttributes(item.attributes), ...validatePrices(item, "Market Reference item") };
 	});
-	return { schemaVersion: MARKET_REFERENCE_SCHEMA_VERSION, categoryId, title, updatedAt: reference.updatedAt, research: { sampleCount, method: MARKET_RESEARCH_METHOD }, items };
+	return { schemaVersion: MARKET_REFERENCE_SCHEMA_VERSION, categoryId, title, updatedAt: reference.updatedAt, research: { sampleCount, method: reference.research.method }, items };
 }
 
 function normalizeLegacyMarketReference(reference) {
@@ -86,7 +86,7 @@ function normalizeLegacyMarketReference(reference) {
 		watts.add(watt);
 		return { variantId: `${watt}w`, label: `${watt} وات`, attributes: { watt }, ...validatePrices(item, "Legacy Market Reference item") };
 	});
-	return { schemaVersion: MARKET_REFERENCE_SCHEMA_VERSION, categoryId, title, updatedAt: reference.updatedAt, research: { sampleCount, method: MARKET_RESEARCH_METHOD }, items };
+	return { schemaVersion: MARKET_REFERENCE_SCHEMA_VERSION, categoryId, title, updatedAt: reference.updatedAt, research: { sampleCount, method: "manual_market_research" }, items };
 }
 function normalizeStoredMarketReference(reference) {
 	if (!isPlainObject(reference)) throw validationError("Market Reference is invalid.");

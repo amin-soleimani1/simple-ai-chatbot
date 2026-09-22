@@ -9,7 +9,7 @@ export const MAX_PRICE_DISPERSION = 0.50;
 function validationError(message) { return new MarketReferenceValidationError(message); }
 function validateMetadata(metadata) {
 	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata) || Object.keys(metadata).length !== 3 || !["title", "updatedAt", "researchMethod"].every((key) => key in metadata)) throw validationError("Candidate metadata is invalid.");
-	if (typeof metadata.title !== "string" || !metadata.title.trim() || typeof metadata.updatedAt !== "string" || !metadata.updatedAt.trim() || metadata.researchMethod !== "manual_market_research") throw validationError("Candidate metadata is invalid.");
+	if (typeof metadata.title !== "string" || !metadata.title.trim() || typeof metadata.updatedAt !== "string" || !metadata.updatedAt.trim() || !["manual_market_research", "automated_market_research"].includes(metadata.researchMethod)) throw validationError("Candidate metadata is invalid.");
 	return metadata;
 }
 

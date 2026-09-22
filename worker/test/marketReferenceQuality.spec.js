@@ -15,6 +15,11 @@ describe("market reference quality gate", () => {
 		expect(result).toMatchObject({ passed: true, eligible: true, candidate: { schemaVersion: 2, research: { sampleCount: 7 }, items: [{ variantId: "9w", label: "nine", attributes: { watt: 9 } }, { variantId: "20w", label: "twenty", attributes: { watt: 20 } }] } });
 	});
 
+	it("accepts the explicit automated research method while preserving manual compatibility", () => {
+		const result = evaluate({ metadata: { ...metadata, researchMethod: "automated_market_research" } });
+		expect(result.candidate.research.method).toBe("automated_market_research");
+	});
+
 	it("passes exact policy thresholds including 0.50 dispersion", () => {
 		expect(evaluate({ aggregation: aggregate([variant({ minPrice: 100, referencePrice: 200, maxPrice: 200 })]) }).passed).toBe(true);
 	});

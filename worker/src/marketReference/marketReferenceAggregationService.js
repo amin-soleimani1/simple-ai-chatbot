@@ -77,7 +77,7 @@ export function validateAggregationResult(result) {
 	assertExactKeys(result, ["schemaVersion", "categoryId", "variants"], "Aggregation Result");
 	if (result.schemaVersion !== AGGREGATION_SCHEMA_VERSION) throw validationError(`Aggregation Result schemaVersion must be ${AGGREGATION_SCHEMA_VERSION}.`);
 	nonEmptyString(result.categoryId, "Aggregation Result categoryId");
-	if (!Array.isArray(result.variants) || result.variants.length === 0) throw validationError("Aggregation Result variants must be a non-empty array.");
+	if (!Array.isArray(result.variants)) throw validationError("Aggregation Result variants must be an array.");
 	const variantIds = new Set();
 	for (const variant of result.variants) {
 		assertExactKeys(variant, ["variantId", "minPrice", "referencePrice", "maxPrice", "stats"], "Aggregation Result variant");
