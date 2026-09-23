@@ -4,6 +4,7 @@ import ChatInput from "./components/ChatInput";
 import ChatWindow from "./components/ChatWindow";
 import Header from "./components/Header";
 import InstallApp from "./components/InstallApp";
+import OfflineScreen from "./components/OfflineScreen";
 import WelcomeModal from "./components/WelcomeModal";
 import { authenticateAdmin, getAdminSession, getSuggestions, sendMessage } from "./services/api";
 import AdminPanel from "./admin/AdminPanel";
@@ -32,6 +33,19 @@ function ChatbotApp() {
   const [suggestionsError, setSuggestionsError] = useState(false);
   const [installAvailable, setInstallAvailable] = useState(false);
   const [manualInstallOpen, setManualInstallOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => window.navigator.onLine);
+  const [retryFailed, setRetryFailed] = useState(false);
+
+  useEffect(() => {
+    function handleOnline() { setIsOnline(true); setRetryFailed(false); }
+    function handleOffline() { setIsOnline(false); setRetryFailed(false); }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -130,6 +144,11 @@ function ChatbotApp() {
   }
   function closeAdminAccess() { setAdminAccessOpen(false); }
   function openInstallModal() { setManualInstallOpen(true); }
+  function retryConnection() {
+    const online = window.navigator.onLine;
+    setIsOnline(online);
+    setRetryFailed(!online);
+  }
   function denyAdminAccess() { setAdminAccessOpen(false); setShowAccessDenied(true); }
   async function grantAdminAccess(pin) {
     const authenticated = await authenticateAdmin(pin);
@@ -140,7 +159,7 @@ function ChatbotApp() {
     return authenticated;
   }
 
-  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} onInstallClick={openInstallModal} installAvailable={installAvailable} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} transition={landingTransition} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} /><ChatInput onSend={handleSend} isSending={isSending} /><InstallApp introductionComplete={!showWelcomeModal} manualOpen={manualInstallOpen} onAvailabilityChange={setInstallAvailable} onManualClose={setManualInstallOpen} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}</main>;
+  return <main dir="rtl" className="chatbot-background flex h-dvh min-h-dvh flex-col overflow-hidden text-zinc-100"><Header onAdminClick={() => setAdminAccessOpen(true)} onInstallClick={openInstallModal} installAvailable={installAvailable} robotState={robotState} isSending={isSending} /><ChatWindow messages={messages} onSuggestionClick={handleSend} viewMode={viewMode} transition={landingTransition} suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} /><ChatInput onSend={handleSend} isSending={isSending} /><InstallApp introductionComplete={!showWelcomeModal} manualOpen={manualInstallOpen} onAvailabilityChange={setInstallAvailable} onManualClose={setManualInstallOpen} />{showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}{showAccessDenied && <div className="fixed inset-x-4 top-4 z-[70] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-xl border border-white/10 bg-[#3a1722] px-4 py-3 text-center text-sm text-zinc-100 shadow-xl shadow-black/40" role="status">متأسفم، دسترسی برای شما امکان‌پذیر نیست</div>}{adminAccessOpen && <AdminAccessModal onClose={closeAdminAccess} onDenied={denyAdminAccess} onGranted={grantAdminAccess} />}{!isOnline && <OfflineScreen onRetry={retryConnection} retryFailed={retryFailed} />}</main>;
 }
 
 function App() {
