@@ -3,11 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import RobotAvatar from "./RobotAvatar";
 import StoreDrawer from "./StoreDrawer";
 
-export default function Header({ onAdminClick, robotState, isSending }) {
+export default function Header({ onAdminClick, onInstallClick, installAvailable, robotState, isSending }) {
   const [isDrawerMounted, setIsDrawerMounted] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const closeButtonRef = useRef(null);
+  const installAttentionTimerRef = useRef(null);
+  const hasShownInstallAttentionRef = useRef(false);
+  const [showInstallAttention, setShowInstallAttention] = useState(false);
+
+  useEffect(() => () => window.clearTimeout(installAttentionTimerRef.current), []);
 
   useEffect(() => {
     if (!isDrawerMounted) return undefined;
@@ -28,8 +33,15 @@ export default function Header({ onAdminClick, robotState, isSending }) {
     };
   }, [isDrawerOpen]);
 
-  function openDrawer() { setIsDrawerMounted(true); }
-  function closeDrawer() { setIsDrawerOpen(false); }
+  function openDrawer() {
+    setIsDrawerMounted(true);
+    if (installAvailable && !hasShownInstallAttentionRef.current) {
+      hasShownInstallAttentionRef.current = true;
+      setShowInstallAttention(true);
+      installAttentionTimerRef.current = window.setTimeout(() => setShowInstallAttention(false), 1500);
+    }
+  }
+  function closeDrawer() { setIsDrawerOpen(false); setShowInstallAttention(false); }
   function handleDrawerExited() {
     setIsDrawerMounted(false);
     menuButtonRef.current?.focus();
@@ -37,6 +49,10 @@ export default function Header({ onAdminClick, robotState, isSending }) {
   function openAdminAccess() {
     closeDrawer();
     onAdminClick();
+  }
+  function openInstallModal() {
+    closeDrawer();
+    window.setTimeout(onInstallClick, 240);
   }
   const isSleeping = robotState === "sleeping";
   const statusText = isSleeping ? "آخرین بازدید به تازگی" : robotState === "waking" || !isSending ? "آنلاین" : "در حال نوشتن ...";
@@ -58,7 +74,7 @@ export default function Header({ onAdminClick, robotState, isSending }) {
           <Menu size={30} strokeWidth={1.9} />
         </button>
       </header>
-      {isDrawerMounted && <StoreDrawer isOpen={isDrawerOpen} onClose={closeDrawer} onExited={handleDrawerExited} onAdminClick={openAdminAccess} closeButtonRef={closeButtonRef} />}
+      {isDrawerMounted && <StoreDrawer isOpen={isDrawerOpen} onClose={closeDrawer} onExited={handleDrawerExited} onAdminClick={openAdminAccess} onInstallClick={openInstallModal} installAvailable={installAvailable} showInstallAttention={showInstallAttention} closeButtonRef={closeButtonRef} />}
     </>
   );
 }

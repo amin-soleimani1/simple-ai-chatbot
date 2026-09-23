@@ -1,4 +1,4 @@
-import { Clock3, MapPin, Phone, ShieldCheck, Store, UserRound, X } from "lucide-react";
+import { Clock3, Download, MapPin, Phone, ShieldCheck, Store, UserRound, X } from "lucide-react";
 import { storeDetails } from "../data/storeDetails";
 
 function DetailItem({ icon: Icon, label, children }) {
@@ -15,7 +15,7 @@ function DetailItem({ icon: Icon, label, children }) {
   );
 }
 
-export default function StoreDrawer({ isOpen, onClose, onExited, onAdminClick, closeButtonRef }) {
+export default function StoreDrawer({ isOpen, onClose, onExited, onAdminClick, onInstallClick, installAvailable, showInstallAttention, closeButtonRef }) {
   return (
     <div className={`fixed inset-0 z-50 ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!isOpen}>
       <div className={`absolute inset-0 bg-[rgba(6,5,7,0.48)] backdrop-blur-sm transition-opacity duration-200 ${isOpen ? "opacity-100" : "opacity-0"}`} onPointerDown={onClose} />
@@ -38,6 +38,7 @@ export default function StoreDrawer({ isOpen, onClose, onExited, onAdminClick, c
             <DetailItem icon={Phone} label="شماره تماس"><a className="text-[#e8c96f] underline-offset-4 hover:underline" dir="ltr" href={`tel:${storeDetails.phone}`}>{storeDetails.phone}</a></DetailItem>
             <DetailItem icon={MapPin} label="آدرس">{storeDetails.address}</DetailItem>
             <DetailItem icon={Clock3} label="ساعات کاری">{storeDetails.hours}</DetailItem>
+            {installAvailable && <button type="button" onClick={onInstallClick} className="relative flex w-full gap-3 py-3.5 text-right text-sm text-zinc-200 transition hover:text-[#efd080] focus:outline-none focus:ring-2 focus:ring-[#d9ad4a]/60"><span className="mt-0.5 grid size-8 shrink-0 place-items-center text-[#e3bd62]"><Download size={16} strokeWidth={1.8} /></span><span className="mt-1 min-w-0 text-sm leading-6 text-zinc-100">نصب برنامه</span>{showInstallAttention && <span className="install-attention-dot absolute left-2 top-1/2 -translate-y-1/2" aria-hidden="true" />}</button>}
           </div>
 
           <div className="mt-auto border-t border-[#d9ad4a]/18 px-4 py-3">

@@ -64,6 +64,7 @@ button, textarea { font: inherit; }
 }
 
 .robot-status-dot--online { background: #79c970; box-shadow: 0 0 6px rgb(121 201 112 / 28%); }
+.install-attention-dot { width:5px; height:5px; margin-right:auto; border-radius:999px; background:#e3bd62; opacity:.85; animation:install-attention-pulse 750ms ease-in-out 2 both; }
 
 @media (prefers-reduced-motion: reduce) {
   .robot-avatar__head,
@@ -150,11 +151,16 @@ button, textarea { font: inherit; }
   0%, 100% { opacity:.45; transform:scale(.82); }
   50% { opacity:1; transform:scale(1); }
 }
+@keyframes install-attention-pulse {
+  0%, 100% { opacity:.25; transform:scale(.8); }
+  50% { opacity:1; transform:scale(1); }
+}
 @keyframes landing-scroll-ring { 0% { opacity:0; transform:translate(-50%,-50%) scale(.7); } 35% { opacity:.85; } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.55); } }
 @keyframes landing-scroll-nudge { 0%,100% { transform:translateY(0); } 48% { transform:translateY(-5%); } }
 @keyframes conversation-scroll-nudge { 0%,100% { transform:translateX(0); } 48% { transform:translateX(5%); } }
 
 @media (prefers-reduced-motion: reduce) {
   .assistant-response-reveal,
-  .assistant-processing-indicator__dot { animation:none !important; }
+  .assistant-processing-indicator__dot,
+  .install-attention-dot { animation:none !important; }
 }
