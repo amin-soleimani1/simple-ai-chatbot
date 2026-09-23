@@ -31,32 +31,59 @@ function ChatbotApp() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState(false);
+  const suggestionsLoadedRef = useRef(false);
+  const suggestionsRequestInFlightRef = useRef(false);
+  const retrySuggestionsAfterCurrentRequestRef = useRef(false);
   const [installAvailable, setInstallAvailable] = useState(false);
   const [manualInstallOpen, setManualInstallOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => window.navigator.onLine);
   const [retryFailed, setRetryFailed] = useState(false);
 
   useEffect(() => {
-    function handleOnline() { setIsOnline(true); setRetryFailed(false); }
-    function handleOffline() { setIsOnline(false); setRetryFailed(false); }
+    let active = true;
+    function loadSuggestions() {
+      if (!window.navigator.onLine || suggestionsLoadedRef.current) return;
+      if (suggestionsRequestInFlightRef.current) {
+        retrySuggestionsAfterCurrentRequestRef.current = true;
+        return;
+      }
+      suggestionsRequestInFlightRef.current = true;
+      setSuggestionsLoading(true);
+      setSuggestionsError(false);
+      getSuggestions().then((nextSuggestions) => {
+        if (!active) return;
+        suggestionsLoadedRef.current = true;
+        setSuggestions(nextSuggestions);
+        setSuggestionsError(false);
+      }).catch(() => {
+        if (active) setSuggestionsError(true);
+      }).finally(() => {
+        suggestionsRequestInFlightRef.current = false;
+        if (!active) return;
+        setSuggestionsLoading(false);
+        if (retrySuggestionsAfterCurrentRequestRef.current && !suggestionsLoadedRef.current) {
+          retrySuggestionsAfterCurrentRequestRef.current = false;
+          loadSuggestions();
+        }
+      });
+    }
+    function handleOnline() {
+      setIsOnline(true);
+      setRetryFailed(false);
+      loadSuggestions();
+    }
+    function handleOffline() {
+      setIsOnline(false);
+      setRetryFailed(false);
+    }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    loadSuggestions();
     return () => {
+      active = false;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    getSuggestions().then((nextSuggestions) => {
-      if (!active) return;
-      setSuggestions(nextSuggestions);
-      setSuggestionsError(false);
-    }).catch(() => {
-      if (active) setSuggestionsError(true);
-    }).finally(() => { if (active) setSuggestionsLoading(false); });
-    return () => { active = false; };
   }, []);
 
   useEffect(() => {
