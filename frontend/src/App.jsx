@@ -34,6 +34,8 @@ function ChatbotApp() {
   const suggestionsLoadedRef = useRef(false);
   const suggestionsRequestInFlightRef = useRef(false);
   const retrySuggestionsAfterCurrentRequestRef = useRef(false);
+  const suggestionsRetryTimerRef = useRef(null);
+  const suggestionsRetryCountRef = useRef(0);
   const [installAvailable, setInstallAvailable] = useState(false);
   const [manualInstallOpen, setManualInstallOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => window.navigator.onLine);
@@ -41,6 +43,17 @@ function ChatbotApp() {
 
   useEffect(() => {
     let active = true;
+    function clearSuggestionsRetryTimer() {
+      window.clearTimeout(suggestionsRetryTimerRef.current);
+      suggestionsRetryTimerRef.current = null;
+    }
+    function scheduleSuggestionsRetry(delay) {
+      clearSuggestionsRetryTimer();
+      suggestionsRetryTimerRef.current = window.setTimeout(() => {
+        suggestionsRetryTimerRef.current = null;
+        loadSuggestions();
+      }, delay);
+    }
     function loadSuggestions() {
       if (!window.navigator.onLine || suggestionsLoadedRef.current) return;
       if (suggestionsRequestInFlightRef.current) {
@@ -53,16 +66,27 @@ function ChatbotApp() {
       getSuggestions().then((nextSuggestions) => {
         if (!active) return;
         suggestionsLoadedRef.current = true;
+        suggestionsRetryCountRef.current = 0;
+        retrySuggestionsAfterCurrentRequestRef.current = false;
+        clearSuggestionsRetryTimer();
         setSuggestions(nextSuggestions);
         setSuggestionsError(false);
       }).catch(() => {
-        if (active) setSuggestionsError(true);
+        if (!active) return;
+        if (window.navigator.onLine && suggestionsRetryCountRef.current < 2) {
+          const delay = 1000 * (2 ** suggestionsRetryCountRef.current);
+          suggestionsRetryCountRef.current += 1;
+          scheduleSuggestionsRetry(delay);
+        } else {
+          setSuggestionsError(true);
+        }
       }).finally(() => {
         suggestionsRequestInFlightRef.current = false;
         if (!active) return;
         setSuggestionsLoading(false);
         if (retrySuggestionsAfterCurrentRequestRef.current && !suggestionsLoadedRef.current) {
           retrySuggestionsAfterCurrentRequestRef.current = false;
+          clearSuggestionsRetryTimer();
           loadSuggestions();
         }
       });
@@ -70,17 +94,21 @@ function ChatbotApp() {
     function handleOnline() {
       setIsOnline(true);
       setRetryFailed(false);
+      clearSuggestionsRetryTimer();
+      suggestionsRetryCountRef.current = 0;
       loadSuggestions();
     }
     function handleOffline() {
       setIsOnline(false);
       setRetryFailed(false);
+      clearSuggestionsRetryTimer();
     }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     loadSuggestions();
     return () => {
       active = false;
+      clearSuggestionsRetryTimer();
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
