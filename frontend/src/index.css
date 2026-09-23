@@ -128,7 +128,7 @@ button, textarea { font: inherit; }
 .message-entry { animation: message-enter 380ms cubic-bezier(.22, 1, .36, 1) both; }
 .message-entry--assistant { animation-duration: 460ms; }
 .assistant-response-reveal { animation: assistant-response-reveal 360ms cubic-bezier(.22, 1, .36, 1) both; }
-.assistant-processing-indicator { width:16.2px; height:16.2px; margin-left:3%; border-radius:999px; background:#fff; box-shadow:0 0 7px rgb(255 255 255 / 18%); animation:assistant-processing-pulse 1.6s ease-in-out infinite; }
+.assistant-processing-indicator { width:16.2px; height:16.2px; margin-left:3%; border:1px solid rgb(255 255 255 / 88%); border-radius:999px; background:transparent; box-shadow:0 0 5px rgb(255 255 255 / 16%); animation:assistant-processing-pulse 1.6s ease-in-out infinite; }
 
 @keyframes conversation-rail-reveal {
   from { opacity: 0; transform: translateY(14px); }
@@ -144,8 +144,8 @@ button, textarea { font: inherit; }
   to { opacity:1; clip-path:inset(0 0 0 0); }
 }
 @keyframes assistant-processing-pulse {
-  0%, 100% { opacity:.78; transform:scale(.75); }
-  50% { opacity:1; transform:scale(1.15); }
+  0%, 100% { opacity:.78; transform:scale(.75); box-shadow:0 0 4px rgb(255 255 255 / 12%); }
+  50% { opacity:1; transform:scale(1.15); box-shadow:0 0 7px rgb(255 255 255 / 24%); }
 }
 @keyframes landing-scroll-ring { 0% { opacity:0; transform:translate(-50%,-50%) scale(.7); } 35% { opacity:.85; } 100% { opacity:0; transform:translate(-50%,-50%) scale(1.55); } }
 @keyframes landing-scroll-nudge { 0%,100% { transform:translateY(0); } 48% { transform:translateY(-5%); } }
