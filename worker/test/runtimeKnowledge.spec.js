@@ -150,6 +150,30 @@ describe("runtime knowledge", () => {
 		expect(prompt).toContain("قیمت پنل سقفی ۲۴ وات، ۲۱۶ هزار تومان است.");
 	});
 
+	it("distinguishes missing Official Knowledge from explicit available, out-of-stock, and not-sold statuses in the chat prompt", async () => {
+		const env = createRuntimeEnv({
+			"knowledge:categories": JSON.stringify([
+				categoryWithStatus("economy-bulbs", "available"),
+				categoryWithStatus("projectors", "out_of_stock"),
+				categoryWithStatus("repairs", "not_sold"),
+			]),
+			"knowledge:economy-bulbs": priceListRecord("economy-bulbs"),
+			"knowledge:projectors": priceListRecord("projectors"),
+			"knowledge:repairs": priceListRecord("repairs"),
+		});
+		env.AI = { run: vi.fn().mockResolvedValue({ response: "ok" }) };
+		await worker.fetch(new Request("http://example.com/chat", {
+			method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "unknown product" }),
+		}), env);
+
+		const prompt = env.AI.run.mock.calls[0][1].messages[0].content;
+		expect(prompt).toContain("در حال حاضر اطلاعات این محصول در فهرست محصولات فروشگاه ثبت نشده. برای دیدن محصولات ثبت‌شده می‌توانید پیشنهادهای پایین صفحه را بررسی کنید.");
+		expect(prompt).toContain("نبود اطلاعات Official Store Knowledge به معنی ناموجود، اتمام موجودی یا نفروختن محصول نیست");
+		expect(prompt).toContain('"status":"available"');
+		expect(prompt).toContain('"status":"out_of_stock"');
+		expect(prompt).toContain('"status":"not_sold"');
+	});
+
 	it("returns a structured price table for a saved requested price-list category without calling AI", async () => {
 		const env = createRuntimeEnv({
 			"knowledge:projectors": JSON.stringify({
