@@ -8,6 +8,7 @@ import OfflineScreen from "./components/OfflineScreen";
 import WelcomeModal from "./components/WelcomeModal";
 import { authenticateAdmin, getAdminSession, getSuggestions, sendMessage } from "./services/api";
 import { readSuggestionsCache, writeSuggestionsCache } from "./services/suggestionsCache";
+import { getSuggestionsEpisodeStartAction, getSuggestionsRetryDelay, getSuggestionsSuccessState } from "./services/suggestionsLifecycle";
 import AdminPanel from "./admin/AdminPanel";
 import { getAdminPath, navigateTo, replaceTo, restoreAdminRoute } from "./admin/adminRoutes";
 
@@ -76,7 +77,18 @@ function ChatbotApp() {
       }, delay);
     }
     function startRefreshEpisode() {
-      if (!window.navigator.onLine) return;
+      const startAction = getSuggestionsEpisodeStartAction({
+        online: window.navigator.onLine,
+        resolved: suggestionsResolvedRef.current,
+      });
+      if (startAction !== "start") {
+        if (startAction === "resolve-unavailable") {
+          suggestionsEpisodeActiveRef.current = false;
+          setSuggestionsLoading(false);
+          setSuggestionsError(true);
+        }
+        return;
+      }
       if (suggestionsRequestInFlightRef.current) {
         suggestionsRefreshRequestedRef.current = true;
         return;
@@ -108,20 +120,23 @@ function ChatbotApp() {
       suggestionsTimeoutTimerRef.current = timeoutId;
       getSuggestions({ signal: controller.signal }).then((nextSuggestions) => {
         if (!active) return;
-        suggestionsResolvedRef.current = true;
+        const successState = getSuggestionsSuccessState(nextSuggestions);
+        suggestionsResolvedRef.current = successState.resolved;
         suggestionsEpisodeActiveRef.current = false;
         suggestionsRefreshRequestedRef.current = false;
         clearSuggestionsRetryTimer();
-        setSuggestions(nextSuggestions);
-        setSuggestionsError(false);
+        setSuggestions(successState.suggestions);
+        setSuggestionsLoading(successState.loading);
+        setSuggestionsError(successState.error);
         writeSuggestionsCache(nextSuggestions);
       }).catch(() => {
         if (!active) return;
         if (!window.navigator.onLine && !timedOut) {
           suggestionsEpisodeActiveRef.current = false;
-        } else if (window.navigator.onLine && suggestionsAttemptCountRef.current < 3) {
-          const delay = 1000 * (2 ** (suggestionsAttemptCountRef.current - 1));
-          scheduleSuggestionsRetry(delay, runAttempt);
+        } else if (window.navigator.onLine) {
+          const delay = getSuggestionsRetryDelay(suggestionsAttemptCountRef.current);
+          if (delay !== null) scheduleSuggestionsRetry(delay, runAttempt);
+          else finishEpisodeWithFailure();
         } else {
           finishEpisodeWithFailure();
         }
@@ -153,7 +168,10 @@ function ChatbotApp() {
       suggestionsEpisodeActiveRef.current = false;
       suggestionsRefreshRequestedRef.current = false;
       stopSuggestionsRequest();
-      if (!suggestionsResolvedRef.current) setSuggestionsLoading(false);
+      if (!suggestionsResolvedRef.current) {
+        setSuggestionsLoading(false);
+        setSuggestionsError(true);
+      }
     }
     function handleForegroundRecovery() {
       if (document.visibilityState !== "visible") return;
@@ -169,7 +187,8 @@ function ChatbotApp() {
     window.addEventListener("offline", handleOffline);
     document.addEventListener("visibilitychange", handleForegroundRecovery);
     window.addEventListener("pageshow", handlePageShow);
-    startRefreshEpisode();
+    if (window.navigator.onLine) handleOnline();
+    else handleOffline();
     return () => {
       active = false;
       clearSuggestionsRetryTimer();
