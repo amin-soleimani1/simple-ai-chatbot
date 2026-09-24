@@ -99,43 +99,6 @@ export async function getKnowledgeCategories() {
   return data.categories;
 }
 
-function isMarketReference(value) {
-  return value
-    && value.schemaVersion === 2
-    && typeof value.categoryId === "string"
-    && typeof value.title === "string"
-    && typeof value.updatedAt === "string"
-    && Number.isSafeInteger(value?.research?.sampleCount)
-    && value.research.sampleCount > 0
-    && value.research.method === "manual_market_research"
-    && Array.isArray(value.items)
-    && value.items.every((item) => typeof item?.variantId === "string" && typeof item.label === "string" && item.attributes && typeof item.attributes === "object");
-}
-
-export async function getMarketReference(categoryId) {
-  const response = await adminRequest(`/admin/market-reference/${encodeURIComponent(categoryId)}`);
-  const data = await readAdminResponse(response, "Unable to load Market Reference");
-  if (!isMarketReference(data?.marketReference)) throw new Error("Market Reference response is invalid");
-  return data.marketReference;
-}
-
-export async function saveMarketReference(categoryId, marketReference) {
-  const response = await adminRequest(`/admin/market-reference/${encodeURIComponent(categoryId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(marketReference),
-  });
-  let data = null;
-  try { data = await response.json(); } catch { /* A safe UI error is shown below. */ }
-  if (!response.ok) {
-    const error = new Error(typeof data?.error === "string" ? data.error : "Unable to save Market Reference");
-    error.status = response.status;
-    throw error;
-  }
-  if (!isMarketReference(data?.marketReference)) throw new Error("Saved Market Reference response is invalid");
-  return data.marketReference;
-}
-
 export async function getKnowledgeCategoryDetail(categoryId) {
   const response = await adminRequest(`/admin/knowledge/${encodeURIComponent(categoryId)}`);
   const data = await readAdminResponse(response, "Unable to load knowledge category");

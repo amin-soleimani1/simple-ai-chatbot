@@ -7,7 +7,6 @@ import {
 import { describe, it, expect, vi } from "vitest";
 import worker from "../src";
 import { getKnowledgeCategory, getRuntimeKnowledge, KNOWLEDGE_CATEGORIES, normalizePriceListItem, parseKnowledge, resolveKnowledgeCategory } from "../src/knowledge/knowledgeService.js";
-import { DEFAULT_MARKET_REFERENCE_CATALOG } from "../src/marketReference/defaultMarketReferenceCatalog.js";
 
 const authEnv = {
 	ADMIN_PIN: "123456",
@@ -39,18 +38,6 @@ function createKnowledgeEnv(initialValues = {}) {
 			put: vi.fn(async (key, value) => values.set(key, value)),
 		},
 		_values: values,
-	};
-}
-
-function marketReference(overrides = {}) {
-	return {
-		schemaVersion: 2,
-		categoryId: "economy-bulbs",
-		title: "لامپ اقتصادی",
-		updatedAt: "2026-09-22T00:00:00.000Z",
-		research: { sampleCount: 5, method: "manual_market_research" },
-		items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, referencePrice: 140000, maxPrice: 160000 }],
-		...overrides,
 	};
 }
 
@@ -190,146 +177,6 @@ describe("worker routes", () => {
 		}), authEnv);
 		expect(response.status).toBe(403);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
-	});
-
-	it("requires the existing Admin session for Market Reference Catalog GET and seed", async () => {
-		const env = createKnowledgeEnv();
-		for (const options of [{}, { method: "POST" }]) {
-			const path = options.method === "POST" ? "/admin/market-reference/catalog/seed" : "/admin/market-reference/catalog";
-			const response = await worker.fetch(request(path, options), env);
-			expect(response.status).toBe(401);
-			expect(await response.json()).toEqual({ authenticated: false });
-		}
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("returns a controlled missing response for an authenticated Market Reference Catalog GET without writing", async () => {
-		const env = createKnowledgeEnv();
-		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
-		expect(response.status).toBe(404);
-		expect(await response.json()).toEqual({ error: "Market Reference Catalog not found." });
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("explicitly seeds and reads the predefined Market Reference Catalog without creating datasets or modifying knowledge", async () => {
-		const dataset = JSON.stringify({ price: 1 });
-		const knowledge = JSON.stringify({ data: "official" });
-		const env = createKnowledgeEnv({ "market-reference:economy-bulbs": dataset, "knowledge:economy-bulbs": knowledge });
-		const seeded = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
-		expect(seeded.response.status).toBe(200);
-		expect(await seeded.response.json()).toEqual({ seeded: true, reason: "created" });
-		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
-		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("market-reference:catalog", expect.any(String));
-		expect(env._values.get("market-reference:economy-bulbs")).toBe(dataset);
-		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledge);
-
-		const read = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
-		expect(read.response.status).toBe(200);
-		expect(await read.response.json()).toEqual({ catalog: DEFAULT_MARKET_REFERENCE_CATALOG });
-		expect(DEFAULT_MARKET_REFERENCE_CATALOG).toMatchObject({ schemaVersion: 1 });
-		expect(DEFAULT_MARKET_REFERENCE_CATALOG.categories).toHaveLength(50);
-		expect(env.APP_CONFIG.put).toHaveBeenCalledTimes(1);
-	});
-
-	it("does not overwrite an existing Market Reference Catalog during a second explicit seed", async () => {
-		const env = createKnowledgeEnv();
-		await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
-		const stored = env._values.get("market-reference:catalog");
-		env.APP_CONFIG.put.mockClear();
-		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ seeded: false, reason: "already_exists" });
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-		expect(env._values.get("market-reference:catalog")).toBe(stored);
-	});
-
-	it("gives catalog routes precedence over the existing Market Reference category route", async () => {
-		const env = createKnowledgeEnv();
-		const catalog = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
-		expect(catalog.response.status).toBe(404);
-		expect(await catalog.response.json()).toEqual({ error: "Market Reference Catalog not found." });
-		const seed = await authenticatedKnowledgeRequest("/admin/market-reference/catalog/seed", { method: "POST" }, env);
-		expect(seed.response.status).toBe(200);
-		expect(env.APP_CONFIG.put).toHaveBeenCalledWith("market-reference:catalog", expect.any(String));
-	});
-
-	it("returns a controlled error for a malformed stored Market Reference Catalog without writing", async () => {
-		const env = createKnowledgeEnv({ "market-reference:catalog": "{bad-json" });
-		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/catalog", {}, env);
-		expect(response.status).toBe(500);
-		expect(await response.json()).toEqual({ error: "Unable to access Market Reference Catalog storage." });
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("requires the existing Admin session for Market Reference GET and PUT", async () => {
-		const env = createKnowledgeEnv();
-		for (const options of [
-			{},
-			{ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(marketReference()) },
-		]) {
-			const response = await worker.fetch(request("/admin/market-reference/economy-bulbs", options), env);
-			expect(response.status).toBe(401);
-			expect(await response.json()).toEqual({ authenticated: false });
-		}
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("reads an existing Market Reference with derived freshness and no writes", async () => {
-		const updatedAt = new Date().toISOString();
-		const stored = marketReference({ updatedAt });
-		const env = createKnowledgeEnv({ "market-reference:economy-bulbs": JSON.stringify(stored) });
-		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {}, env);
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ marketReference: { ...stored, freshness: "current" } });
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("returns controlled not-found and storage-safe responses for missing Market References", async () => {
-		const env = createKnowledgeEnv();
-		const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {}, env);
-		expect(response.status).toBe(404);
-		expect(await response.json()).toEqual({ error: "Market Reference not found." });
-		expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-	});
-
-	it("creates and fully replaces Market References while preserving submitted updatedAt and Official Store Knowledge", async () => {
-		const knowledgeRecord = JSON.stringify({ parsedData: { items: [{ watt: 9, price: 160000 }] } });
-		const categoryRegistry = JSON.stringify([{ id: "economy-bulbs", title: "لامپ اقتصادی", type: "price_list" }]);
-		const env = createKnowledgeEnv({ "knowledge:economy-bulbs": knowledgeRecord, "knowledge:categories": categoryRegistry });
-		const created = marketReference();
-		const first = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
-			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(created),
-		}, env);
-		expect(first.response.status).toBe(200);
-		expect((await first.response.json()).marketReference).toEqual(created);
-
-		const replacement = marketReference({ updatedAt: "2026-09-23T12:34:56.000Z", items: [{ variantId: "12w", label: "12 وات", attributes: { watt: 12 }, minPrice: 180000, referencePrice: 200000, maxPrice: 220000 }] });
-		const second = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
-			method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(replacement),
-		}, env);
-		expect(second.response.status).toBe(200);
-		expect((await second.response.json()).marketReference).toEqual(replacement);
-		expect(env._values.get("market-reference:economy-bulbs")).toBe(JSON.stringify(replacement));
-		expect(env._values.get("knowledge:economy-bulbs")).toBe(knowledgeRecord);
-		expect(env._values.get("knowledge:categories")).toBe(categoryRegistry);
-		expect(env.APP_CONFIG.put.mock.calls.map(([key]) => key)).toEqual(["market-reference:economy-bulbs", "market-reference:economy-bulbs"]);
-	});
-
-	it("rejects Market Reference URL/body mismatches and service validation errors without writing", async () => {
-		const invalidBodies = [
-			marketReference({ categoryId: "projectors" }),
-			marketReference({ schemaVersion: 1 }),
-			marketReference({ items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 110000 }] }),
-			marketReference({ items: [{ variantId: "9w", label: "9 وات", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }, { variantId: "9w", label: "9 وات دیگر", attributes: { watt: 9 }, minPrice: 120000, maxPrice: 160000, referencePrice: 140000 }] }),
-		];
-		for (const body of invalidBodies) {
-			const env = createKnowledgeEnv();
-			const { response } = await authenticatedKnowledgeRequest("/admin/market-reference/economy-bulbs", {
-				method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-			}, env);
-			expect(response.status).toBe(400);
-			expect(env.APP_CONFIG.put).not.toHaveBeenCalled();
-		}
 	});
 
 	it("returns enabled suggestion metadata in deterministic order without authentication or KV writes", async () => {
@@ -1123,22 +970,4 @@ describe("worker routes", () => {
     expect((await added.response.json()).record.parsedData.items).toEqual([{ watt: 20, price: 220000, available: true }]);
     expect((await getRuntimeKnowledge(env)).categories.find((category) => category.id === "economy-bulbs")?.data.items).toEqual([{ watt: 20, priceToman: 220000, available: true }]);
   });
-});
-
-describe("market reference bootstrap route", () => {
-	it("requires an admin session and initializes missing targets and frozen datasets idempotently", async () => {
-		const unauthenticated = await worker.fetch(request("/admin/market-reference/bootstrap", { method: "POST" }), createKnowledgeEnv());
-		expect(unauthenticated.status).toBe(401);
-		const { response, env: value } = await authenticatedKnowledgeRequest("/admin/market-reference/bootstrap", { method: "POST" });
-		expect(response.status).toBe(200);
-		const first = await response.json();
-		expect(first.targets.createdCategoryIds).toHaveLength(50);
-		expect(first.datasets.created).toEqual(["led-bulbs", "halogen-bulbs", "led-strips"]);
-		expect(value._values.get("market-reference:catalog")).toBeUndefined();
-		expect(value._values.get("knowledge:led-bulbs")).toBeUndefined();
-		const cookie = await createSessionCookie();
-		const again = await worker.fetch(request("/admin/market-reference/bootstrap", { method: "POST", headers: { Cookie: cookie } }), value);
-		expect((await again.json()).datasets.created).toEqual([]);
-		expect(value.APP_CONFIG.put.mock.calls.map(([key]) => key).every((key) => key.startsWith("market-reference:targets:") || ["market-reference:led-bulbs", "market-reference:halogen-bulbs", "market-reference:led-strips"].includes(key))).toBe(true);
-	});
 });

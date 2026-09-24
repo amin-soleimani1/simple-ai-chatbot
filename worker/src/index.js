@@ -1,8 +1,5 @@
 import { createAdminSession, expiredSessionCookie, hasAdminSecrets, pinsMatch, requireAdmin, sessionCookie } from "./auth/adminSession.js";
 import { addPriceListItem, createDynamicKnowledgeCategory, deletePriceListItem, getKnowledgeRecord, getRuntimeKnowledge, listKnowledgeCategories, listSuggestionCategories, previewKnowledge, replaceKnowledge, resolveKnowledgeCategory, updateKnowledgeCategoryMetadata, updatePriceListByPercentage, updatePriceListItem, updatePriceListItemAvailability } from "./knowledge/knowledgeService.js";
-import { getMarketReference, MarketReferenceValidationError, saveMarketReference } from "./marketReference/marketReferenceService.js";
-import { getMarketReferenceCatalog, seedDefaultMarketReferenceCatalog } from "./marketReference/marketReferenceCatalogService.js";
-import { initializeMarketReferenceBootstrap } from "./marketReference/marketReferenceBootstrapInitializationService.js";
 
 const MAX_HISTORY_ITEMS = 6;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -62,45 +59,6 @@ async function requestBody(request) {
 	try { return await request.json(); } catch { return null; }
 }
 
-function categoryNeedsMarketReference(category) {
-	return category.type === "price_list"
-		&& (category.status !== "available" || category.data.items.some((item) => item.available === false));
-}
-
-function marketReferenceItemsForCategory(category, reference) {
-	const items = category.status === "available"
-		? reference.items.filter((referenceItem) => category.data.items.some((item) => item.watt === referenceItem.attributes.watt && item.available === false))
-		: reference.items;
-	return items.filter((item) => Number.isSafeInteger(item.attributes.watt)).map(({ attributes, minPrice, maxPrice, referencePrice }) => ({ watt: attributes.watt, minPrice, maxPrice, referencePrice }));
-}
-
-async function marketReferenceFallback(env, category) {
-	if (!categoryNeedsMarketReference(category)) return null;
-	try {
-		const reference = await getMarketReference(env, category.id);
-		if (!reference || reference.freshness === "outdated") return null;
-		const items = marketReferenceItemsForCategory(category, reference);
-		if (!items.length) return null;
-		return {
-			categoryId: reference.categoryId,
-			title: reference.title,
-			updatedAt: reference.updatedAt,
-			freshness: reference.freshness,
-			priceSource: "market_reference",
-			items,
-		};
-	} catch {
-		return null;
-	}
-}
-
-async function marketReferenceContext(env, runtimeKnowledge) {
-	const references = await Promise.all(runtimeKnowledge.categories
-		.filter(categoryNeedsMarketReference)
-		.map((category) => marketReferenceFallback(env, category)));
-	return references.filter(Boolean);
-}
-
 async function priceTablePresentation(env, runtimeKnowledge, presentationRequest) {
 	if (
 		!presentationRequest
@@ -113,14 +71,12 @@ async function priceTablePresentation(env, runtimeKnowledge, presentationRequest
 	));
 	if (!category || !Array.isArray(category.data?.items) || category.data.items.length === 0) return null;
 
-	const marketReference = await marketReferenceFallback(env, category);
 	return {
 		type: "price_table",
 		categoryId: category.id,
 		title: category.title,
 		status: category.status ?? "available",
 		rows: category.status === "not_sold" ? [] : category.data.items.map(({ watt, priceToman, available }) => ({ watt, priceToman, available })),
-		...(marketReference ? { marketReference } : {}),
 	};
 }
 
@@ -219,67 +175,6 @@ async function handleKnowledge(request, env, pathname) {
 	return jsonResponse(result, result.valid ? 200 : 400, request);
 }
 
-async function handleMarketReference(request, env, pathname) {
-	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
-	const parts = pathname.split("/").filter(Boolean);
-	const categoryId = parts[2];
-	if (!categoryId || parts.length !== 3) return jsonResponse({ error: "Market Reference not found." }, 404, request);
-
-	if (request.method === "GET") {
-		try {
-			const marketReference = await getMarketReference(env, categoryId);
-			if (!marketReference) return jsonResponse({ error: "Market Reference not found." }, 404, request);
-			return jsonResponse({ marketReference }, 200, request);
-		} catch {
-			return jsonResponse({ error: "Unable to access Market Reference storage." }, 500, request);
-		}
-	}
-
-	if (request.method !== "PUT") return jsonResponse({ error: "Method not allowed." }, 405, request);
-	const body = await requestBody(request);
-	if (!body) return jsonResponse({ error: "Market Reference request body is invalid." }, 400, request);
-	if (body.categoryId !== categoryId) return jsonResponse({ error: "Market Reference categoryId must match the URL." }, 400, request);
-	try {
-		return jsonResponse({ marketReference: await saveMarketReference(env, body) }, 200, request);
-	} catch (error) {
-		if (error instanceof MarketReferenceValidationError) return jsonResponse({ error: error.message }, 400, request);
-		return jsonResponse({ error: "Unable to save Market Reference." }, 500, request);
-	}
-}
-
-async function handleMarketReferenceCatalog(request, env, pathname) {
-	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
-
-	if (pathname === "/admin/market-reference/catalog") {
-		if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405, request);
-		try {
-			const catalog = await getMarketReferenceCatalog(env);
-			if (!catalog) return jsonResponse({ error: "Market Reference Catalog not found." }, 404, request);
-			return jsonResponse({ catalog }, 200, request);
-		} catch {
-			return jsonResponse({ error: "Unable to access Market Reference Catalog storage." }, 500, request);
-		}
-	}
-
-	if (pathname === "/admin/market-reference/catalog/seed") {
-		if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
-		try {
-			return jsonResponse(await seedDefaultMarketReferenceCatalog(env), 200, request);
-		} catch {
-			return jsonResponse({ error: "Unable to initialize Market Reference Catalog." }, 500, request);
-		}
-	}
-
-	return jsonResponse({ error: "Market Reference Catalog not found." }, 404, request);
-}
-
-async function handleMarketReferenceBootstrap(request, env) {
-	if (!(await requireAdmin(request, env))) return jsonResponse({ authenticated: false }, 401, request);
-	if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
-	try { return jsonResponse(await initializeMarketReferenceBootstrap(env), 200, request); }
-	catch { return jsonResponse({ error: "Unable to initialize Market Reference bootstrap." }, 500, request); }
-}
-
 export default {
 	async fetch(request, env) {
 		if (request.method === "OPTIONS") {
@@ -319,18 +214,6 @@ export default {
 			} catch {
 				return jsonResponse({ error: "Unable to access knowledge storage." }, 500, request);
 			}
-		}
-
-		if (pathname === "/admin/market-reference/catalog" || pathname === "/admin/market-reference/catalog/seed") {
-			return handleMarketReferenceCatalog(request, env, pathname);
-		}
-
-		if (pathname === "/admin/market-reference/bootstrap") {
-			return handleMarketReferenceBootstrap(request, env);
-		}
-
-		if (pathname === "/admin/market-reference" || pathname.startsWith("/admin/market-reference/")) {
-			return handleMarketReference(request, env, pathname);
 		}
 
 		if (pathname !== "/chat") {
@@ -375,14 +258,11 @@ export default {
 			if (presentation) {
 				return jsonResponse({ message: presentation.title, presentation }, 200, request);
 			}
-			const marketReferences = await marketReferenceContext(env, runtimeKnowledge);
 			const products = {
 				available: runtimeKnowledge.available,
 				categories: runtimeKnowledge.categories.map((category) => ({ ...category, priceSource: "store" })),
-				marketReferences,
 				usageRules: [
 					"Category status is authoritative and takes precedence over item availability: for not_sold state the store does not offer the category and stored prices are never current purchasable prices; for out_of_stock state the whole category is unavailable and stored prices are only last recorded prices; only when category status is available may an item with available=true be presented as available. An item with available=false is currently unavailable and its stored price must never be presented as a current purchasable price.",
-					"Entries with priceSource=store are official store data. Entries with priceSource=market_reference are approximate market references, never store prices. Market references may only be used when their freshness is current or stale, only for the matching watt when an available category item is unavailable, and for unavailable or not_sold categories. For stale references, state that the data is older and include updatedAt. Never use an outdated reference as a current market price. If no valid matching market reference is present, say that current market-reference data is insufficient; never invent, substitute, interpolate, or infer a market price.",
 					"Use only this Knowledge for store information, prices, inventory, and services.",
 					"Never guess prices or store information.",
 					"If requested information is absent from Knowledge, clearly say it is not available.",
