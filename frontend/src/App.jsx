@@ -7,6 +7,7 @@ import InstallApp from "./components/InstallApp";
 import OfflineScreen from "./components/OfflineScreen";
 import WelcomeModal from "./components/WelcomeModal";
 import { authenticateAdmin, getAdminSession, getSuggestions, sendMessage } from "./services/api";
+import { readSuggestionsCache, writeSuggestionsCache } from "./services/suggestionsCache";
 import AdminPanel from "./admin/AdminPanel";
 import { getAdminPath, navigateTo, replaceTo, restoreAdminRoute } from "./admin/adminRoutes";
 
@@ -28,14 +29,19 @@ function ChatbotApp() {
   const responsePresentationTimerRef = useRef(null);
   const [adminAccessOpen, setAdminAccessOpen] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [startupSuggestionsCache] = useState(() => readSuggestionsCache());
+  const [suggestions, setSuggestions] = useState(() => startupSuggestionsCache?.suggestions ?? []);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(() => !startupSuggestionsCache);
   const [suggestionsError, setSuggestionsError] = useState(false);
-  const suggestionsLoadedRef = useRef(false);
+  const suggestionsResolvedRef = useRef(Boolean(startupSuggestionsCache));
   const suggestionsRequestInFlightRef = useRef(false);
-  const retrySuggestionsAfterCurrentRequestRef = useRef(false);
+  const suggestionsRefreshRequestedRef = useRef(false);
   const suggestionsRetryTimerRef = useRef(null);
-  const suggestionsRetryCountRef = useRef(0);
+  const suggestionsTimeoutTimerRef = useRef(null);
+  const suggestionsAbortControllerRef = useRef(null);
+  const suggestionsEpisodeActiveRef = useRef(false);
+  const suggestionsAttemptCountRef = useRef(0);
+  const lastForegroundRecoveryRef = useRef(0);
   const [installAvailable, setInstallAvailable] = useState(false);
   const [manualInstallOpen, setManualInstallOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => window.navigator.onLine);
@@ -47,70 +53,133 @@ function ChatbotApp() {
       window.clearTimeout(suggestionsRetryTimerRef.current);
       suggestionsRetryTimerRef.current = null;
     }
-    function scheduleSuggestionsRetry(delay) {
+    function clearSuggestionsTimeoutTimer() {
+      window.clearTimeout(suggestionsTimeoutTimerRef.current);
+      suggestionsTimeoutTimerRef.current = null;
+    }
+    function stopSuggestionsRequest() {
+      clearSuggestionsTimeoutTimer();
+      suggestionsAbortControllerRef.current?.abort();
+      suggestionsAbortControllerRef.current = null;
+      suggestionsRequestInFlightRef.current = false;
+    }
+    function finishEpisodeWithFailure() {
+      suggestionsEpisodeActiveRef.current = false;
+      clearSuggestionsRetryTimer();
+      if (!suggestionsResolvedRef.current) setSuggestionsError(true);
+    }
+    function scheduleSuggestionsRetry(delay, runAttempt) {
       clearSuggestionsRetryTimer();
       suggestionsRetryTimerRef.current = window.setTimeout(() => {
         suggestionsRetryTimerRef.current = null;
-        loadSuggestions();
+        runAttempt();
       }, delay);
     }
-    function loadSuggestions() {
-      if (!window.navigator.onLine || suggestionsLoadedRef.current) return;
+    function startRefreshEpisode() {
+      if (!window.navigator.onLine) return;
       if (suggestionsRequestInFlightRef.current) {
-        retrySuggestionsAfterCurrentRequestRef.current = true;
+        suggestionsRefreshRequestedRef.current = true;
         return;
       }
+      if (suggestionsEpisodeActiveRef.current) return;
+      suggestionsEpisodeActiveRef.current = true;
+      suggestionsAttemptCountRef.current = 0;
+      runAttempt();
+    }
+    function runAttempt() {
+      if (!active || !window.navigator.onLine || !suggestionsEpisodeActiveRef.current) return;
+      if (suggestionsRequestInFlightRef.current) {
+        suggestionsRefreshRequestedRef.current = true;
+        return;
+      }
+      suggestionsAttemptCountRef.current += 1;
       suggestionsRequestInFlightRef.current = true;
-      setSuggestionsLoading(true);
-      setSuggestionsError(false);
-      getSuggestions().then((nextSuggestions) => {
+      if (!suggestionsResolvedRef.current) {
+        setSuggestionsLoading(true);
+        setSuggestionsError(false);
+      }
+      const controller = new AbortController();
+      let timedOut = false;
+      suggestionsAbortControllerRef.current = controller;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 10000);
+      suggestionsTimeoutTimerRef.current = timeoutId;
+      getSuggestions({ signal: controller.signal }).then((nextSuggestions) => {
         if (!active) return;
-        suggestionsLoadedRef.current = true;
-        suggestionsRetryCountRef.current = 0;
-        retrySuggestionsAfterCurrentRequestRef.current = false;
+        suggestionsResolvedRef.current = true;
+        suggestionsEpisodeActiveRef.current = false;
+        suggestionsRefreshRequestedRef.current = false;
         clearSuggestionsRetryTimer();
         setSuggestions(nextSuggestions);
         setSuggestionsError(false);
+        writeSuggestionsCache(nextSuggestions);
       }).catch(() => {
         if (!active) return;
-        if (window.navigator.onLine && suggestionsRetryCountRef.current < 2) {
-          const delay = 1000 * (2 ** suggestionsRetryCountRef.current);
-          suggestionsRetryCountRef.current += 1;
-          scheduleSuggestionsRetry(delay);
+        if (!window.navigator.onLine && !timedOut) {
+          suggestionsEpisodeActiveRef.current = false;
+        } else if (window.navigator.onLine && suggestionsAttemptCountRef.current < 3) {
+          const delay = 1000 * (2 ** (suggestionsAttemptCountRef.current - 1));
+          scheduleSuggestionsRetry(delay, runAttempt);
         } else {
-          setSuggestionsError(true);
+          finishEpisodeWithFailure();
         }
       }).finally(() => {
-        suggestionsRequestInFlightRef.current = false;
+        window.clearTimeout(timeoutId);
+        if (suggestionsTimeoutTimerRef.current === timeoutId) suggestionsTimeoutTimerRef.current = null;
+        const isCurrentRequest = suggestionsAbortControllerRef.current === controller;
+        if (isCurrentRequest) {
+          suggestionsAbortControllerRef.current = null;
+          suggestionsRequestInFlightRef.current = false;
+        }
         if (!active) return;
-        setSuggestionsLoading(false);
-        if (retrySuggestionsAfterCurrentRequestRef.current && !suggestionsLoadedRef.current) {
-          retrySuggestionsAfterCurrentRequestRef.current = false;
-          clearSuggestionsRetryTimer();
-          loadSuggestions();
+        if (!suggestionsResolvedRef.current && !suggestionsEpisodeActiveRef.current) setSuggestionsLoading(false);
+        if (suggestionsRefreshRequestedRef.current && !suggestionsEpisodeActiveRef.current && window.navigator.onLine) {
+          suggestionsRefreshRequestedRef.current = false;
+          startRefreshEpisode();
         }
       });
     }
     function handleOnline() {
       setIsOnline(true);
       setRetryFailed(false);
-      clearSuggestionsRetryTimer();
-      suggestionsRetryCountRef.current = 0;
-      loadSuggestions();
+      startRefreshEpisode();
     }
     function handleOffline() {
       setIsOnline(false);
       setRetryFailed(false);
       clearSuggestionsRetryTimer();
+      suggestionsEpisodeActiveRef.current = false;
+      suggestionsRefreshRequestedRef.current = false;
+      stopSuggestionsRequest();
+      if (!suggestionsResolvedRef.current) setSuggestionsLoading(false);
+    }
+    function handleForegroundRecovery() {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastForegroundRecoveryRef.current < 1000) return;
+      lastForegroundRecoveryRef.current = now;
+      startRefreshEpisode();
+    }
+    function handlePageShow(event) {
+      if (event.persisted) handleForegroundRecovery();
     }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    loadSuggestions();
+    document.addEventListener("visibilitychange", handleForegroundRecovery);
+    window.addEventListener("pageshow", handlePageShow);
+    startRefreshEpisode();
     return () => {
       active = false;
       clearSuggestionsRetryTimer();
+      suggestionsEpisodeActiveRef.current = false;
+      suggestionsRefreshRequestedRef.current = false;
+      stopSuggestionsRequest();
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleForegroundRecovery);
+      window.removeEventListener("pageshow", handlePageShow);
     };
   }, []);
 
